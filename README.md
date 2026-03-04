@@ -6,20 +6,18 @@ Watch AI Auto-Analysis System
 
 腕時計の撮影画像をAI（Claude Vision API）で自動解析し、ブランド・型番・素材などを構造化データとして抽出するCLIツールです。
 
+システム仕分け後のデータ（商品ごとにフォルダ分け済み、フォルダ名に管理番号を含む）をそのまま投入できます。
+
 ## セットアップ
 
 ```bash
 # 依存パッケージのインストール
 pip install -r requirements.txt
 
-# バーコード読取用ライブラリ（OS別）
-# macOS:
-brew install zbar
-# Ubuntu/Debian:
-sudo apt-get install libzbar0
-# Windows: pyzbar に同梱
+# Anthropic APIキーの設定（Windows）
+setx ANTHROPIC_API_KEY "sk-ant-api03-..."
 
-# Anthropic APIキーの設定
+# Anthropic APIキーの設定（Mac / Linux）
 export ANTHROPIC_API_KEY=sk-ant-api03-...
 ```
 
@@ -30,16 +28,13 @@ export ANTHROPIC_API_KEY=sk-ant-api03-...
 python main.py
 
 # フォルダ指定
-python main.py --input ./images/lot001 --output ./results/lot001.csv
-
-# 個別処理モード（1商品ずつ即座にレスポンス）
-python main.py --mode single --input ./images/item001/
+python main.py --input D:\Photos\lot001 --output D:\Results\lot001.csv
 
 # バッチモード（Batch API利用・50%割引）
-python main.py --mode batch --input ./images/lot001/
+python main.py --mode batch --input D:\Photos\lot001
 
 # Excel出力
-python main.py --format excel --output ./results/lot001.xlsx
+python main.py --format excel
 
 # ドライラン（AIを呼ばずに構造確認のみ）
 python main.py --dry-run
@@ -48,41 +43,47 @@ python main.py --dry-run
 python main.py -v
 ```
 
-## 画像フォルダの構成
+## 入力データの形式
 
-### パターンA: 複数商品（1商品=1サブフォルダ）
+システム仕分け後のデータをそのまま使用します。フォルダ名の先頭の数字部分を管理番号として自動取得するため、バーコード読取処理は不要です。
+
+### フォルダ構成
+
 ```
-input/
-├── item001/
-│   ├── 001.jpg    # バーコード
-│   ├── 002.jpg    # 正面 ★AI解析
-│   ├── 003.jpg    # 斜め
-│   ├── 004.jpg    # 側面1
-│   ├── 005.jpg    # 側面2
-│   ├── 006.jpg    # 側面3
-│   ├── 007.jpg    # 側面4
-│   ├── 008.jpg    # 裏蓋斜め
-│   ├── 009.jpg    # 裏蓋 ★AI解析
-│   ├── 010.jpg    # 裏蓋正面
-│   ├── 011.jpg    # コメントシール1 ★AI解析（存在時のみ）
-│   └── 012.jpg    # コメントシール2 ★AI解析（存在時のみ）
-├── item002/
+input\
+├── 1234567_SEIKO セイコー\
+│   ├── 001.jpg    # 正面 ★AI解析
+│   ├── 002.jpg    # 斜め
+│   ├── 003.jpg    # 側面1
+│   ├── 004.jpg    # 側面2
+│   ├── 005.jpg    # 側面3
+│   ├── 006.jpg    # 側面4
+│   ├── 007.jpg    # 裏蓋斜め
+│   ├── 008.jpg    # 裏蓋 ★AI解析
+│   ├── 009.jpg    # 裏蓋正面
+│   ├── 010.jpg    # コメントシール1 ★AI解析（存在時のみ）
+│   └── 011.jpg    # コメントシール2 ★AI解析（存在時のみ）
+├── 9876543_OMEGA オメガ\
 │   └── ...
 ```
 
-### パターンB: 1商品のみ（直下に画像）
-```
-input/
-├── 001.jpg
-├── 002.jpg
-└── ...
-```
+### フォルダ名のルール
+
+- 先頭が数字で始まること（例: `1234567_時計`）
+- 先頭の連続する数字部分が管理番号として使われます
+- アンダースコア以降の商品名部分は自由です
+
+### 画像枚数
+
+- 9枚: 商品画像のみ（異常報告なし）
+- 10枚: 商品画像 + コメントシール1枚
+- 11枚: 商品画像 + コメントシール2枚
 
 ## 出力CSV列
 
 | # | 列名 | 内容 |
 |---|------|------|
-| 1 | 管理番号 | バーコードから読み取った管理番号 |
+| 1 | 管理番号 | フォルダ名から抽出した管理番号 |
 | 2 | カテゴリ番号 | mapping.xlsx照合結果 |
 | 3 | タイトル | 65文字タイトル |
 | 4 | ブランド英字 | AI解析結果 |
@@ -114,8 +115,7 @@ watch-ai-analyzer/
 ├── requirements.txt           # 依存パッケージ
 ├── README.md                  # このファイル
 ├── modules/
-│   ├── folder_scanner.py      # フォルダスキャン・画像仕分け
-│   ├── barcode_reader.py      # バーコード読取
+│   ├── folder_scanner.py      # フォルダスキャン・管理番号抽出
 │   ├── ai_analyzer.py         # Claude Vision API連携
 │   ├── normalizer.py          # データ正規化
 │   ├── category_mapper.py     # カテゴリマッピング
