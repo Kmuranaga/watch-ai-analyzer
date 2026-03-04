@@ -34,7 +34,6 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from config import DEFAULT_INPUT_DIR, DEFAULT_OUTPUT_DIR, ANTHROPIC_API_KEY
 from modules.folder_scanner import scan_folder, ProductImages
-from modules.barcode_reader import read_barcode
 from modules.ai_analyzer import (
     analyze_front, analyze_back_cover, analyze_comment,
     create_batch_requests, submit_batch, poll_batch,
@@ -68,7 +67,7 @@ def process_single_product(
     1商品を処理し、結果を返す。
 
     処理フロー:
-      1. バーコード読取 → 管理番号
+      1. フォルダ名から管理番号を取得（システム仕分け済み）
       2. AI解析（正面）→ ブランド・シリーズ・文字盤色・針数
       3. AI解析（裏蓋）→ 型番・素材・防水
       4. AI解析（コメントシール）→ 異常報告
@@ -82,21 +81,14 @@ def process_single_product(
 
     logger.info(f"=== 商品処理開始: {product.product_id} ({product.image_count}枚) ===")
 
-    # --- Step 1: バーコード読取 ---
-    if product.barcode_image:
-        barcode = read_barcode(product.barcode_image)
-        if barcode:
-            result.management_number = barcode
-        else:
-            result.management_number = "読取不可"
-            errors.append("バーコード読取失敗")
-    else:
-        result.management_number = "画像なし"
-        errors.append("バーコード画像なし")
+    # --- Step 1: 管理番号（フォルダ名から取得済み） ---
+    result.management_number = product.management_number
+    if not result.management_number:
+        errors.append("管理番号抽出不可（フォルダ名を確認してください）")
 
     if dry_run:
         result.status = "ドライラン"
-        logger.info(f"[{product.product_id}] ドライラン完了")
+        logger.info(f"[{product.product_id}] ドライラン完了 (管理番号: {result.management_number or '不明'})")
         return result
 
     # --- Step 2: AI解析（正面画像） ---
@@ -280,16 +272,7 @@ def main():
         # === Batch APIモード ===
         logger.info("Batch APIモードで処理を開始します（50%割引適用）")
 
-        # Step 1: バーコード読取（バッチ前に同期実行）
-        barcode_map: dict[str, str] = {}
-        for product in products:
-            if product.barcode_image:
-                bc = read_barcode(product.barcode_image)
-                barcode_map[product.product_id] = bc if bc else "読取不可"
-            else:
-                barcode_map[product.product_id] = "画像なし"
-
-        # Step 2: Batchリクエスト作成・送信
+        # Step 1: Batchリクエスト作成・送信
         batch_requests = create_batch_requests(products)
         if not batch_requests:
             logger.error("Batchリクエストが0件です。")
@@ -309,15 +292,15 @@ def main():
         # Step 4: 結果取得
         batch_results = retrieve_batch_results(batch_id)
 
-        # Step 5: 各商品の結果をパース → 正規化 → マッピング → タイトル生成
+        # Step 4: 各商品の結果をパース → 正規化 → マッピング → タイトル生成
         for product in products:
             result = ProductResult()
             errors = []
 
-            # バーコード
-            result.management_number = barcode_map.get(product.product_id, "")
-            if result.management_number in ("読取不可", "画像なし"):
-                errors.append(f"バーコード{result.management_number}")
+            # 管理番号（フォルダ名から取得済み）
+            result.management_number = product.management_number
+            if not result.management_number:
+                errors.append("管理番号抽出不可")
 
             # Batch結果をパース
             front_data, back_data, comment_data = parse_batch_results_for_product(

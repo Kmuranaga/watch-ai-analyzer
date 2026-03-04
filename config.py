@@ -14,7 +14,7 @@ PROJECT_ROOT = Path(__file__).parent
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
 # === AIモデル設定 ===
-AI_MODEL = "claude-opus-4-6"
+AI_MODEL = "claude-sonnet-4-20250514"
 AI_MAX_TOKENS = 2048
 AI_TEMPERATURE = 0.0  # 解析精度重視のため低温設定
 
@@ -26,19 +26,13 @@ PROMPTS_DIR = PROJECT_ROOT / "prompts"
 
 # === 画像設定 ===
 SUPPORTED_IMAGE_FORMATS = {".jpg", ".jpeg", ".png", ".heic", ".heif"}
-IMAGES_PER_PRODUCT_MIN = 10
-IMAGES_PER_PRODUCT_MAX = 12
 
-# === 画像インデックス（0始まり） ===
-IDX_BARCODE = 0       # 1枚目: バーコード
-IDX_FRONT = 1         # 2枚目: 正面画像
-IDX_BACK_COVER = 8    # 9枚目: 裏蓋画像
-IDX_COMMENT1 = 10     # 11枚目: コメントシール1
-IDX_COMMENT2 = 11     # 12枚目: コメントシール2
-
-# === バーコード設定 ===
-BARCODE_ROTATIONS = [0, 90, 180, 270]
-BARCODE_SCALE_FACTOR = 2  # 低解像度画像の拡大倍率
+# === 画像インデックス（0始まり、バーコードなし） ===
+# システム仕分け後データ: バーコード画像は含まれない
+IDX_FRONT = 0         # 1枚目: 正面画像
+IDX_BACK_COVER = 7    # 8枚目: 裏蓋画像
+IDX_COMMENT1 = 9      # 10枚目: コメントシール1
+IDX_COMMENT2 = 10     # 11枚目: コメントシール2
 
 # === リトライ設定 ===
 API_MAX_RETRIES = 3
