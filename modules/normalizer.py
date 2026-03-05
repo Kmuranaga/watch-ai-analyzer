@@ -142,6 +142,8 @@ def normalize_material(material: str) -> str:
 
 
 # === ムーブメント変換テーブル ===
+# 画像にQz/quartz表記あり→クォーツ、Automatic表記あり→自動巻きのみ出力
+# Hand-wound（手巻き）は画像からは判別不可のため出力しない
 MOVEMENT_MAP = {
     "quartz": "Quartz",
     "qz": "Quartz",
@@ -158,24 +160,34 @@ MOVEMENT_MAP = {
     "ソーラー": "Solar",
     "eco-drive": "Solar",
     "エコドライブ": "Solar",
-    "hand-wound": "Hand-wound",
-    "hand wound": "Hand-wound",
-    "manual": "Hand-wound",
-    "手巻き": "Hand-wound",
-    "手巻": "Hand-wound",
     "kinetic": "Kinetic",
     "キネティック": "Kinetic",
     "spring drive": "Spring Drive",
     "スプリングドライブ": "Spring Drive",
 }
 
+# Hand-wound系はヒットしても空文字を返す（出力しない）
+MOVEMENT_IGNORE = {
+    "hand-wound", "hand wound", "manual", "手巻き", "手巻",
+}
+
 
 def normalize_movement(movement: str) -> str:
-    """ムーブメント種別を統一形式に変換"""
+    """ムーブメント種別を統一形式に変換。手巻き系は空文字を返す。"""
     if not movement:
         return ""
 
     normalized = normalize_text(movement).lower()
+
+    # 手巻き系は出力しない
+    if normalized in MOVEMENT_IGNORE:
+        logger.debug(f"ムーブメント除外（手巻き）: {movement}")
+        return ""
+
+    for key in MOVEMENT_IGNORE:
+        if key in normalized:
+            logger.debug(f"ムーブメント除外（手巻き部分一致）: {movement}")
+            return ""
 
     if normalized in MOVEMENT_MAP:
         return MOVEMENT_MAP[normalized]
