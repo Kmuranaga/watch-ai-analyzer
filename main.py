@@ -32,7 +32,7 @@ from datetime import datetime
 # プロジェクトルートをパスに追加
 sys.path.insert(0, str(Path(__file__).parent))
 
-from config import DEFAULT_INPUT_DIR, DEFAULT_OUTPUT_DIR, ANTHROPIC_API_KEY
+from config import DEFAULT_INPUT_DIR, DEFAULT_OUTPUT_DIR, GEMINI_API_KEY
 from modules.folder_scanner import scan_folder, ProductImages
 from modules.ai_analyzer import (
     analyze_front, analyze_back_cover, analyze_comment,
@@ -225,11 +225,11 @@ def main():
     logger.info("=" * 60)
 
     # APIキーチェック（ドライラン以外）
-    if not args.dry_run and not ANTHROPIC_API_KEY:
+    if not args.dry_run and not GEMINI_API_KEY:
         logger.error(
-            "ANTHROPIC_API_KEY が設定されていません。\n"
+            "GEMINI_API_KEY が設定されていません。\n"
             "以下のコマンドで設定してください:\n"
-            "  export ANTHROPIC_API_KEY=sk-ant-api03-..."
+            "  export GEMINI_API_KEY=your-api-key"
         )
         sys.exit(1)
 

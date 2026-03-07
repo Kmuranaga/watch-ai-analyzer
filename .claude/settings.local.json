@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git:*)"
+      "Bash(git:*)",
+      "Bash(source:*)",
+      "WebFetch(domain:ai.google.dev)"
     ]
   }
 }

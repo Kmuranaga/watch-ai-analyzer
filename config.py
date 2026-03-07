@@ -11,10 +11,10 @@ PROJECT_ROOT = Path(__file__).parent
 
 # === APIキー ===
 # 環境変数から取得。未設定の場合は空文字
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
 # === AIモデル設定 ===
-AI_MODEL = "claude-opus-4-6"
+AI_MODEL = "gemini-2.5-pro"
 AI_MAX_TOKENS = 2048
 AI_TEMPERATURE = 0.0  # 解析精度重視のため低温設定
 
