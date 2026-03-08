@@ -248,21 +248,41 @@ def analyze_comment(image_paths: list[Path]) -> dict:
     }
 
 
-# === Batch API対応（Geminiでは逐次処理で代替） ===
+# === Batch API対応 ===
 
-def _build_request(custom_id: str, prompt: str, image_path: Path) -> dict:
-    """1つのリクエスト情報を組み立てる"""
+def _build_batch_request(custom_id: str, prompt: str, image_path: Path) -> dict:
+    """1つのBatch APIリクエストを組み立てる（InlinedRequest形式）"""
+    image_data, media_type = _encode_image(image_path)
+    image_bytes = base64.standard_b64decode(image_data)
+
     return {
-        "custom_id": custom_id,
-        "prompt": prompt,
-        "image_path": image_path,
+        "metadata": {"custom_id": custom_id},
+        "contents": [
+            types.Content(
+                role="user",
+                parts=[
+                    types.Part.from_bytes(data=image_bytes, mime_type=media_type),
+                    types.Part.from_text(text=prompt),
+                ],
+            )
+        ],
+        "config": types.GenerateContentConfig(
+            max_output_tokens=AI_MAX_TOKENS,
+            temperature=AI_TEMPERATURE,
+        ),
     }
 
 
 def create_batch_requests(products: list) -> list[dict]:
     """
-    バッチ用のリクエストリストを生成する。
+    Batch API用のリクエストリストを生成する。
     products は ProductImages のリスト。
+
+    custom_id（key）の命名規則:
+      - "{product_id}__front"    → 正面画像解析
+      - "{product_id}__back"     → 裏蓋画像解析
+      - "{product_id}__comment1" → コメントシール1
+      - "{product_id}__comment2" → コメントシール2
     """
     requests = []
     front_prompt = _load_prompt("front_analysis.txt")
@@ -273,13 +293,13 @@ def create_batch_requests(products: list) -> list[dict]:
         pid = product.product_id
 
         if product.front_image:
-            requests.append(_build_request(f"{pid}__front", front_prompt, product.front_image))
+            requests.append(_build_batch_request(f"{pid}__front", front_prompt, product.front_image))
 
         if product.back_cover_image:
-            requests.append(_build_request(f"{pid}__back", back_prompt, product.back_cover_image))
+            requests.append(_build_batch_request(f"{pid}__back", back_prompt, product.back_cover_image))
 
         for i, comment_img in enumerate(product.comment_images):
-            requests.append(_build_request(f"{pid}__comment{i+1}", comment_prompt, comment_img))
+            requests.append(_build_batch_request(f"{pid}__comment{i+1}", comment_prompt, comment_img))
 
     logger.info(f"Batchリクエスト生成完了: {len(requests)}件")
     return requests
@@ -287,45 +307,123 @@ def create_batch_requests(products: list) -> list[dict]:
 
 def submit_batch(requests: list[dict]) -> str:
     """
-    リクエストを逐次実行する（Geminiにはバッチ APIがないため）。
-    結果は内部に保持し、batch_idとして"local"を返す。
+    Gemini Batch APIにリクエストを送信する。
+
+    Args:
+        requests: create_batch_requests() で生成したリクエストリスト
+
+    Returns:
+        batch_name: バッチジョブの名前（例: "batches/xxx"）
     """
-    logger.info(f"{len(requests)} リクエストを逐次処理中...")
+    client = _get_client()
 
-    results = {}
-    for i, req in enumerate(requests, 1):
-        custom_id = req["custom_id"]
-        logger.info(f"[{i}/{len(requests)}] 処理中: {custom_id}")
-        try:
-            parsed = _call_api(req["prompt"], req["image_path"])
-            results[custom_id] = parsed
-        except Exception as e:
-            logger.error(f"[{custom_id}] エラー: {e}")
-            results[custom_id] = {}
+    logger.info(f"Batch APIに {len(requests)} リクエストを送信中...")
+    batch_job = client.batches.create(
+        model=AI_MODEL,
+        src=requests,
+        config={
+            "display_name": f"watch-analyzer-{int(time.time())}",
+        },
+    )
 
-    # グローバルに結果を保持
-    global _batch_results_store
-    _batch_results_store = results
-
-    logger.info(f"逐次処理完了: {len(results)}件")
-    return "local"
-
-
-# 逐次処理の結果を保持するストア
-_batch_results_store: dict[str, dict] = {}
+    logger.info(
+        f"Batch作成完了: name={batch_job.name}, "
+        f"state={batch_job.state}"
+    )
+    return batch_job.name
 
 
 def poll_batch(batch_id: str, poll_interval: int = 60) -> None:
-    """Geminiでは逐次処理のため、即座に完了"""
-    logger.info("逐次処理モード: ポーリング不要（処理済み）")
+    """
+    Batch APIの処理完了をポーリングで待機する。
+
+    Args:
+        batch_id: バッチジョブ名
+        poll_interval: ポーリング間隔（秒、デフォルト60秒）
+
+    Raises:
+        RuntimeError: バッチが失敗/キャンセル/期限切れの場合
+    """
+    client = _get_client()
+    completed_states = {"JOB_STATE_SUCCEEDED", "JOB_STATE_FAILED",
+                        "JOB_STATE_CANCELLED", "JOB_STATE_EXPIRED"}
+
+    while True:
+        batch_job = client.batches.get(name=batch_id)
+        state = batch_job.state.name if hasattr(batch_job.state, "name") else str(batch_job.state)
+
+        logger.info(f"Batch {batch_id}: state={state}")
+
+        if state in completed_states:
+            if state == "JOB_STATE_SUCCEEDED":
+                logger.info(f"Batch処理完了: {batch_id}")
+                return
+            else:
+                raise RuntimeError(f"Batchが異常終了しました: {batch_id} (state={state})")
+
+        time.sleep(poll_interval)
 
 
 def retrieve_batch_results(batch_id: str) -> dict[str, dict]:
-    """逐次処理の結果を返す"""
-    global _batch_results_store
-    results = _batch_results_store
-    _batch_results_store = {}
-    logger.info(f"結果取得完了: {len(results)}件")
+    """
+    Batch APIの結果を取得し、key → パース済みJSONの辞書として返す。
+
+    Args:
+        batch_id: バッチジョブ名
+
+    Returns:
+        {custom_id: parsed_json_dict, ...}
+    """
+    client = _get_client()
+    results = {}
+
+    batch_job = client.batches.get(name=batch_id)
+
+    if batch_job.dest and hasattr(batch_job.dest, "inlined_responses") and batch_job.dest.inlined_responses:
+        for entry in batch_job.dest.inlined_responses:
+            # metadataからcustom_idを取得
+            key = None
+            if hasattr(entry, "metadata") and entry.metadata:
+                key = entry.metadata.get("custom_id")
+            if not key:
+                continue
+
+            if hasattr(entry, "response") and entry.response:
+                try:
+                    text = entry.response.candidates[0].content.parts[0].text
+                    parsed = _parse_json_response(text)
+                    results[key] = parsed
+                except (IndexError, AttributeError, json.JSONDecodeError) as e:
+                    logger.error(f"[{key}] 結果解析失敗: {e}")
+                    results[key] = {}
+            elif hasattr(entry, "error") and entry.error:
+                logger.error(f"[{key}] APIエラー: {entry.error}")
+                results[key] = {}
+            else:
+                logger.warning(f"[{key}] 不明な結果")
+                results[key] = {}
+
+    elif batch_job.dest and hasattr(batch_job.dest, "file_name") and batch_job.dest.file_name:
+        # ファイル出力の場合
+        file_content = client.files.download(file=batch_job.dest.file_name)
+        import io
+        for line in io.StringIO(file_content.decode("utf-8")):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry_data = json.loads(line)
+                key = entry_data.get("metadata", {}).get("custom_id", "")
+                response = entry_data.get("response", {})
+                text = response.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                if text:
+                    results[key] = _parse_json_response(text)
+                else:
+                    results[key] = {}
+            except (json.JSONDecodeError, IndexError, KeyError) as e:
+                logger.error(f"Batch結果行の解析失敗: {e}")
+
+    logger.info(f"Batch結果取得完了: {len(results)}件")
     return results
 
 
