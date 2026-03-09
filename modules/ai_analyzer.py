@@ -173,6 +173,7 @@ def analyze_front(image_path: Path) -> dict:
         "dial_color": "",
         "hand_count": "",
         "movement_type": "",
+        "case_shape": "",
         "confidence": {},
     }
     for key, default in defaults.items():

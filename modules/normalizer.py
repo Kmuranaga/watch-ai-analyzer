@@ -38,6 +38,10 @@ def normalize_all(data: dict) -> dict:
     if result.get("model_number"):
         result["model_number"] = normalize_text(result["model_number"])
 
+    # ケース形状正規化
+    if result.get("case_shape"):
+        result["case_shape"] = normalize_case_shape(result["case_shape"])
+
     return result
 
 
@@ -236,3 +240,39 @@ def normalize_water_resistance(water: str) -> str:
     # マッチしない場合はそのまま
     logger.debug(f"防水表記の変換なし: {water}")
     return water.strip()
+
+
+# === ケース形状変換テーブル ===
+CASE_SHAPE_MAP = {
+    "ラウンド": "ラウンド",
+    "丸": "ラウンド",
+    "丸型": "ラウンド",
+    "round": "ラウンド",
+    "スクエア": "スクエア",
+    "四角": "スクエア",
+    "四角型": "スクエア",
+    "square": "スクエア",
+    "レクタンギュラー": "レクタンギュラー",
+    "長方形": "レクタンギュラー",
+    "縦長": "レクタンギュラー",
+    "rectangular": "レクタンギュラー",
+    "rectangle": "レクタンギュラー",
+}
+
+
+def normalize_case_shape(shape: str) -> str:
+    """ケース形状を統一形式（ラウンド/スクエア/レクタンギュラー）に変換"""
+    if not shape:
+        return ""
+
+    normalized = normalize_text(shape).lower()
+
+    if normalized in CASE_SHAPE_MAP:
+        return CASE_SHAPE_MAP[normalized]
+
+    for key, value in CASE_SHAPE_MAP.items():
+        if key in normalized:
+            return value
+
+    logger.debug(f"ケース形状の変換なし: {shape}")
+    return shape.strip()

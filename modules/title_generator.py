@@ -4,7 +4,7 @@
 
 ※ヤフオクの文字数カウントは空白を含まないため、
   空白込みの実際の文字列はもっと長くなる。
-  例: "SEIKO CHRONOGRAPH セイコー クォーツ 腕時計 7T32-9000"
+  例: "SEIKO CHRONOGRAPH セイコー クォーツ ラウンド ブラック 3針 腕時計 7T32-9000"
       空白込み75文字 / 空白抜き62文字 → OK
 
 構成要素の優先順位:
@@ -13,9 +13,12 @@
   3. シリーズ英字（必須）
   4. シリーズカナ（必須）
   5. 型番（必須）
-  6. 素材（任意 - 削除優先3番目）
-  7. 防水（任意 - 削除優先2番目）
-  8. ムーブメント（任意 - 削除優先1番目）
+  6. 文字盤色（強制 - 削除しない）
+  7. 針数（強制 - 削除しない）
+  8. ケース形状（強制 - 削除しない）
+  9. 素材（任意 - 削除優先3番目）
+  10. 防水（任意 - 削除優先2番目）
+  11. ムーブメント（任意 - 削除優先1番目）
 """
 
 import logging
@@ -36,6 +39,9 @@ def generate_title(
     series_en: str = "",
     series_kana: str = "",
     model_number: str = "",
+    dial_color: str = "",
+    hand_count: str = "",
+    case_shape: str = "",
     material: str = "",
     water_resistance: str = "",
     movement_type: str = "",
@@ -43,17 +49,25 @@ def generate_title(
     """
     空白抜き65文字制限のタイトルを生成する。
     超過時は優先度の低い要素から削除する。
+    文字盤色・針数・ケース形状は強制的に含め、削除対象にしない。
 
     Returns:
         生成されたタイトル文字列
     """
-    # 必須要素
+    # 必須要素（削除しない）
     required = [
         brand_en,
         brand_kana,
         series_en,
         series_kana,
         model_number,
+    ]
+
+    # 強制要素（削除しない: 文字盤色、針数、ケース形状）
+    forced = [
+        dial_color,
+        hand_count,
+        case_shape,
     ]
 
     # 任意要素（削除優先順: ムーブメント → 防水 → 素材）
@@ -63,8 +77,9 @@ def generate_title(
         ("movement_type", movement_type),
     ]
 
-    # 空文字の必須要素を除外
+    # 空文字の要素を除外して結合
     parts = [p for p in required if p]
+    parts.extend([p for p in forced if p])
 
     # 任意要素を追加
     optional_parts = [(name, value) for name, value in optional if value]
@@ -84,7 +99,7 @@ def generate_title(
 
     for target in removal_order:
         optional_parts = [(n, v) for n, v in optional_parts if n != target]
-        parts = [p for p in required if p] + [v for _, v in optional_parts]
+        parts = [p for p in required if p] + [p for p in forced if p] + [v for _, v in optional_parts]
         title = " ".join(parts)
         char_count = _count_chars_no_spaces(title)
 

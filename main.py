@@ -142,6 +142,7 @@ def process_single_product(
     result.movement_type = normalized.get("movement_type", "")
     result.dial_color = normalized.get("dial_color", "")
     result.hand_count = normalized.get("hand_count", "")
+    result.case_shape = normalized.get("case_shape", "")
     result.abnormality_text = comment_data.get("abnormality_text", "")
 
     # --- Step 6: カテゴリマッピング ---
@@ -176,6 +177,9 @@ def process_single_product(
         series_en=result.series_en,
         series_kana=result.series_kana,
         model_number=result.model_number,
+        dial_color=result.dial_color,
+        hand_count=result.hand_count,
+        case_shape=result.case_shape,
         material=result.material,
         water_resistance=result.water_resistance,
         movement_type=result.movement_type,
@@ -335,6 +339,7 @@ def main():
             result.movement_type = normalized.get("movement_type", "")
             result.dial_color = normalized.get("dial_color", "")
             result.hand_count = normalized.get("hand_count", "")
+            result.case_shape = normalized.get("case_shape", "")
             result.abnormality_text = comment_data.get("abnormality_text", "")
 
             # カテゴリマッピング（mapping.xlsxのカナ表記で補完）
@@ -368,6 +373,9 @@ def main():
                 series_en=result.series_en,
                 series_kana=result.series_kana,
                 model_number=result.model_number,
+                dial_color=result.dial_color,
+                hand_count=result.hand_count,
+                case_shape=result.case_shape,
                 material=result.material,
                 water_resistance=result.water_resistance,
                 movement_type=result.movement_type,

@@ -3,7 +3,10 @@
     "allow": [
       "Bash(git:*)",
       "Bash(source:*)",
-      "WebFetch(domain:ai.google.dev)"
+      "WebFetch(domain:ai.google.dev)",
+      "Bash(python3:*)",
+      "Bash(wc:*)",
+      "Bash(grep:*)"
     ]
   }
 }
