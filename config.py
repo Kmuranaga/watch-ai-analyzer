@@ -46,3 +46,7 @@ CSV_ENCODING = "utf-8-sig"  # BOM付きUTF-8（Excel互換）
 
 # === Batch API設定 ===
 BATCH_API_ENABLED = True  # Batch APIを利用するか（50%割引）
+
+# === 並列処理設定 ===
+MAX_CONCURRENT_PRODUCTS = 5  # 同時処理する商品数の上限
+MAX_CONCURRENT_API_CALLS = 3  # 1商品内の同時API呼び出し数（正面・裏蓋・コメント）

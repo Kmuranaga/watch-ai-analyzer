@@ -26,13 +26,14 @@ Watch AI Auto-Analysis System - CLI Entry Point
 import argparse
 import logging
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from datetime import datetime
 
 # プロジェクトルートをパスに追加
 sys.path.insert(0, str(Path(__file__).parent))
 
-from config import DEFAULT_INPUT_DIR, DEFAULT_OUTPUT_DIR, GEMINI_API_KEY
+from config import DEFAULT_INPUT_DIR, DEFAULT_OUTPUT_DIR, GEMINI_API_KEY, MAX_CONCURRENT_PRODUCTS
 from modules.folder_scanner import scan_folder, ProductImages
 from modules.ai_analyzer import (
     analyze_front, analyze_back_cover, analyze_comment,
@@ -91,36 +92,40 @@ def process_single_product(
         logger.info(f"[{product.product_id}] ドライラン完了 (管理番号: {result.management_number or '不明'})")
         return result
 
-    # --- Step 2: AI解析（正面画像） ---
+    # --- Step 2-4: AI解析（正面・裏蓋・コメントを並列実行） ---
     front_data = {}
-    if product.front_image:
-        try:
-            front_data = analyze_front(product.front_image)
-        except Exception as e:
-            logger.error(f"正面画像AI解析エラー: {e}")
-            errors.append(f"正面AI解析エラー: {e}")
-    else:
-        errors.append("正面画像なし")
-
-    # --- Step 3: AI解析（裏蓋画像） ---
     back_data = {}
-    if product.back_cover_image:
-        try:
-            back_data = analyze_back_cover(product.back_cover_image)
-        except Exception as e:
-            logger.error(f"裏蓋画像AI解析エラー: {e}")
-            errors.append(f"裏蓋AI解析エラー: {e}")
-    else:
-        errors.append("裏蓋画像なし")
-
-    # --- Step 4: AI解析（コメントシール） ---
     comment_data = {}
-    if product.has_comments:
-        try:
-            comment_data = analyze_comment(product.comment_images)
-        except Exception as e:
-            logger.error(f"コメントシールAI解析エラー: {e}")
-            errors.append(f"コメントAI解析エラー: {e}")
+
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        futures = {}
+
+        if product.front_image:
+            futures[executor.submit(analyze_front, product.front_image)] = "front"
+        else:
+            errors.append("正面画像なし")
+
+        if product.back_cover_image:
+            futures[executor.submit(analyze_back_cover, product.back_cover_image)] = "back"
+        else:
+            errors.append("裏蓋画像なし")
+
+        if product.has_comments:
+            futures[executor.submit(analyze_comment, product.comment_images)] = "comment"
+
+        for future in as_completed(futures):
+            task_type = futures[future]
+            try:
+                if task_type == "front":
+                    front_data = future.result()
+                elif task_type == "back":
+                    back_data = future.result()
+                elif task_type == "comment":
+                    comment_data = future.result()
+            except Exception as e:
+                label = {"front": "正面", "back": "裏蓋", "comment": "コメント"}[task_type]
+                logger.error(f"{label}画像AI解析エラー: {e}")
+                errors.append(f"{label}AI解析エラー: {e}")
 
     # --- Step 5: データ正規化 ---
     merged_data = {**front_data, **back_data}
@@ -365,11 +370,31 @@ def main():
             logger.info(f"[{product.product_id}] {result.brand_en} {result.series_en} - {result.status}")
 
     elif args.mode == "single" or args.dry_run:
-        # 個別処理モード
-        for i, product in enumerate(products, 1):
-            logger.info(f"--- [{i}/{len(products)}] ---")
-            result = process_single_product(product, mapper, dry_run=args.dry_run)
-            results.append(result)
+        # 個別処理モード（複数商品を並列処理）
+        if args.dry_run:
+            # ドライランは直列で十分
+            for i, product in enumerate(products, 1):
+                logger.info(f"--- [{i}/{len(products)}] ---")
+                result = process_single_product(product, mapper, dry_run=True)
+                results.append(result)
+        else:
+            logger.info(f"並列処理モード: 最大{MAX_CONCURRENT_PRODUCTS}商品を同時処理")
+            with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_PRODUCTS) as executor:
+                future_to_product = {
+                    executor.submit(process_single_product, product, mapper): product
+                    for product in products
+                }
+                for future in as_completed(future_to_product):
+                    product = future_to_product[future]
+                    try:
+                        result = future.result()
+                        results.append(result)
+                    except Exception as e:
+                        logger.error(f"[{product.product_id}] 処理失敗: {e}")
+                        err_result = ProductResult()
+                        err_result.management_number = product.management_number
+                        err_result.status = f"処理エラー: {e}"
+                        results.append(err_result)
 
     # === 出力 ===
     if args.format == "excel":
