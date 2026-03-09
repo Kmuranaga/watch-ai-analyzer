@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 COLUMNS = [
     "管理番号",
     "カテゴリ番号",
+    "カテゴリ名",
     "タイトル",
     "ブランド英字",
     "ブランドカナ",
@@ -38,6 +39,7 @@ class ProductResult:
     """1商品の処理結果"""
     management_number: str = ""       # 管理番号
     category_id: str = ""             # カテゴリ番号
+    category_name: str = ""           # カテゴリ名
     title: str = ""                   # 65文字タイトル
     brand_en: str = ""                # ブランド英字
     brand_kana: str = ""              # ブランドカナ
@@ -58,6 +60,7 @@ class ProductResult:
         return [
             self.management_number,
             self.category_id,
+            self.category_name,
             self.title,
             self.brand_en,
             self.brand_kana,
@@ -159,7 +162,7 @@ def write_excel(results: list[ProductResult], output_path: Path) -> None:
                     cell.fill = warning_fill
 
     # 列幅の自動調整
-    column_widths = [14, 14, 50, 16, 14, 18, 14, 16, 12, 10, 14, 10, 8, 14, 30, 20]
+    column_widths = [14, 14, 50, 50, 16, 14, 18, 14, 16, 12, 10, 14, 10, 8, 14, 30, 20]
     for col_idx, width in enumerate(column_widths, 1):
         ws.column_dimensions[chr(64 + col_idx) if col_idx <= 26 else ""].width = width
 

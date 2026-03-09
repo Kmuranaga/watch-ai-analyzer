@@ -22,6 +22,7 @@ AI_TEMPERATURE = 0.0  # 解析精度重視のため低温設定
 DEFAULT_INPUT_DIR = PROJECT_ROOT / "input"
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "output"
 MAPPING_FILE = PROJECT_ROOT / "data" / "mapping.xlsx"
+CATEGORY_NAME_FILE = PROJECT_ROOT / "data" / "category_names.xlsx"
 PROMPTS_DIR = PROJECT_ROOT / "prompts"
 
 # === 画像設定 ===

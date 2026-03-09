@@ -165,6 +165,10 @@ def process_single_product(
     else:
         result.category_id = category_id
 
+    # カテゴリ名の逆引き
+    if result.category_id:
+        result.category_name = mapper.get_category_name(result.category_id)
+
     if match_level == "unknown":
         errors.append("カテゴリ未確定")
     elif match_level == "brand_only":
@@ -360,6 +364,10 @@ def main():
                 errors.append("カテゴリ未確定（汎用・性別不明）")
             else:
                 result.category_id = category_id
+
+            # カテゴリ名の逆引き
+            if result.category_id:
+                result.category_name = mapper.get_category_name(result.category_id)
 
             if match_level == "unknown":
                 errors.append("カテゴリ未確定")

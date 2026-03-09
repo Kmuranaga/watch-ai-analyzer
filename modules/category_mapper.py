@@ -16,7 +16,7 @@ from pathlib import Path
 
 import openpyxl
 
-from config import MAPPING_FILE
+from config import MAPPING_FILE, CATEGORY_NAME_FILE
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,9 @@ class CategoryMapper:
         self.brand_fallback_map: dict[str, dict] = {}  # brand -> fallback row
         self.keyword_map: dict[str, tuple[str, str]] = {}  # keyword -> (brand, series)
         self.generic_categories: list[dict] = []  # 汎用カテゴリ
+        self.category_name_map: dict[str, str] = {}  # カテゴリ番号 -> カテゴリ名
         self._load()
+        self._load_category_names()
 
     def _load(self):
         """mapping.xlsx を読み込む"""
@@ -264,6 +266,32 @@ class CategoryMapper:
             return "デジタル"
 
         return ""
+
+    def _load_category_names(self):
+        """カテゴリ名xlsxを読み込む"""
+        category_name_file = CATEGORY_NAME_FILE
+        if not category_name_file.exists():
+            logger.warning(f"カテゴリ名ファイルが見つかりません: {category_name_file}")
+            return
+
+        wb = openpyxl.load_workbook(category_name_file, read_only=True)
+        ws = wb.active
+        header_row = True
+        for row in ws.iter_rows(min_row=1, values_only=True):
+            if header_row:
+                header_row = False
+                continue
+            vals = [str(v).strip() if v is not None else "" for v in row]
+            cat_id = vals[0] if vals else ""
+            cat_name = vals[1] if len(vals) > 1 else ""
+            if cat_id and cat_name:
+                self.category_name_map[cat_id] = cat_name
+        wb.close()
+        logger.info(f"カテゴリ名読込完了: {len(self.category_name_map)}件")
+
+    def get_category_name(self, category_id: str) -> str:
+        """カテゴリ番号からカテゴリ名を取得"""
+        return self.category_name_map.get(category_id.strip(), "")
 
     def get_brand_kana(self, brand_en: str) -> str:
         """ブランドのカナ表記を取得"""
