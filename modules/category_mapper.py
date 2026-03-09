@@ -2,14 +2,16 @@
 カテゴリマッピングモジュール
 mapping.xlsxを参照し、ブランド+シリーズからカテゴリ番号を決定する
 
-4段階フォールバックロジック:
+5段階フォールバックロジック:
   優先度1: ブランド+シリーズ 完全一致
+  優先度1.5: シリーズ前方一致（例: "G-SHOCK FROGMAN" → "G-SHOCK"）
   優先度2: ブランドのみ一致 →「（その他）」カテゴリ
   優先度3: 汎用カテゴリ（性別+ムーブメント+針数）
   優先度4: 空白（手動入力）
 """
 
 import logging
+import re
 from pathlib import Path
 
 import openpyxl
@@ -74,7 +76,18 @@ class CategoryMapper:
 
             # フォールバック行（「（その他）」）
             if series_en in ("（その他）", "(その他)", "（その他）".upper()):
-                self.brand_fallback_map[brand_en] = entry
+                if brand_kana and re.search(r'[a-zA-Z]', brand_kana):
+                    # brand_kanaにサブブランド名（G-SHOCK, Baby-G等）が入っている場合
+                    # → ブランドフォールバックではなくシリーズエントリとして登録
+                    sub_brand_key = brand_kana.upper()
+                    if (brand_en, sub_brand_key) not in self.brand_series_map:
+                        sub_entry = entry.copy()
+                        sub_entry["series_en"] = sub_brand_key
+                        sub_entry["brand_kana"] = ""  # カナ検索の汚染を防ぐ
+                        self.brand_series_map[(brand_en, sub_brand_key)] = sub_entry
+                else:
+                    # 通常のブランドフォールバック（brand_kana=カシオ等のカナ）
+                    self.brand_fallback_map[brand_en] = entry
             elif series_en:
                 self.brand_series_map[(brand_en, series_en)] = entry
 
@@ -165,6 +178,19 @@ class CategoryMapper:
                     if entry["category_id"]:
                         logger.debug(f"キーワード一致: {series} → {mapped_brand}+{mapped_series}")
                         return entry["category_id"], "brand+series"
+
+            # === 優先度1.5: シリーズ前方一致 ===
+            # 例: "G-SHOCK FROGMAN" → "G-SHOCK" にフォールバック
+            parts = series.split()
+            if len(parts) > 1:
+                for i in range(len(parts) - 1, 0, -1):
+                    prefix = " ".join(parts[:i])
+                    prefix_key = (brand, prefix)
+                    if prefix_key in self.brand_series_map:
+                        entry = self.brand_series_map[prefix_key]
+                        if entry["category_id"]:
+                            logger.debug(f"シリーズ前方一致: {brand}+{prefix} → {entry['category_id']}")
+                            return entry["category_id"], "brand+series"
 
         # === 優先度2: ブランドのみ一致 →「（その他）」 ===
         if brand and brand in self.brand_fallback_map:
