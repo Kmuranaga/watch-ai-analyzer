@@ -158,7 +158,11 @@ def process_single_product(
         movement_type=result.movement_type,
         hand_count=result.hand_count,
     )
-    result.category_id = category_id
+    if match_level == "generic":
+        result.category_id = ""
+        errors.append("カテゴリ未確定（汎用・性別不明）")
+    else:
+        result.category_id = category_id
 
     if match_level == "unknown":
         errors.append("カテゴリ未確定")
@@ -346,7 +350,11 @@ def main():
                 movement_type=result.movement_type,
                 hand_count=result.hand_count,
             )
-            result.category_id = category_id
+            if match_level == "generic":
+                result.category_id = ""
+                errors.append("カテゴリ未確定（汎用・性別不明）")
+            else:
+                result.category_id = category_id
 
             if match_level == "unknown":
                 errors.append("カテゴリ未確定")
