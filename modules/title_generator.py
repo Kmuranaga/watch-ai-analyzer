@@ -34,6 +34,7 @@ def _count_chars_no_spaces(text: str) -> int:
 
 
 def generate_title(
+    title_prefix: str = "",
     brand_en: str = "",
     brand_kana: str = "",
     series_en: str = "",
@@ -88,6 +89,10 @@ def generate_title(
     # タイトルを結合
     title = " ".join(parts)
 
+    # title_prefix を先頭に追加
+    if title_prefix:
+        title = f"{title_prefix} {title}"
+
     # 空白抜き65文字以下ならそのまま返す
     char_count = _count_chars_no_spaces(title)
     if char_count <= TITLE_MAX_LENGTH:
@@ -101,6 +106,8 @@ def generate_title(
         optional_parts = [(n, v) for n, v in optional_parts if n != target]
         parts = [p for p in required if p] + [p for p in forced if p] + [v for _, v in optional_parts]
         title = " ".join(parts)
+        if title_prefix:
+            title = f"{title_prefix} {title}"
         char_count = _count_chars_no_spaces(title)
 
         if char_count <= TITLE_MAX_LENGTH:

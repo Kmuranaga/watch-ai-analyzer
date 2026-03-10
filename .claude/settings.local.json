@@ -6,7 +6,8 @@
       "WebFetch(domain:ai.google.dev)",
       "Bash(python3:*)",
       "Bash(wc:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(python -c \"\nfrom modules.csv_writer import ProductResult, COLUMNS\nprint\\('COLUMNS:', COLUMNS\\)\nr = ProductResult\\(title_prefix='稼働品', abnormality_text='リューズ不動'\\)\nprint\\('to_row:', r.to_row\\(\\)\\)\nprint\\('列数一致:', len\\(COLUMNS\\) == len\\(r.to_row\\(\\)\\)\\)\n\")"
     ]
   }
 }

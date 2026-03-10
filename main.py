@@ -143,6 +143,7 @@ def process_single_product(
     result.dial_color = normalized.get("dial_color", "")
     result.hand_count = normalized.get("hand_count", "")
     result.case_shape = normalized.get("case_shape", "")
+    result.title_prefix = comment_data.get("title_prefix", "")
     result.abnormality_text = comment_data.get("abnormality_text", "")
 
     # --- Step 6: カテゴリマッピング ---
@@ -176,6 +177,7 @@ def process_single_product(
 
     # --- Step 7: タイトル生成 ---
     result.title = generate_title(
+        title_prefix=result.title_prefix,
         brand_en=result.brand_en,
         brand_kana=result.brand_kana,
         series_en=result.series_en,
@@ -344,6 +346,7 @@ def main():
             result.dial_color = normalized.get("dial_color", "")
             result.hand_count = normalized.get("hand_count", "")
             result.case_shape = normalized.get("case_shape", "")
+            result.title_prefix = comment_data.get("title_prefix", "")
             result.abnormality_text = comment_data.get("abnormality_text", "")
 
             # カテゴリマッピング（mapping.xlsxのカナ表記で補完）
@@ -376,6 +379,7 @@ def main():
 
             # タイトル生成
             result.title = generate_title(
+                title_prefix=result.title_prefix,
                 brand_en=result.brand_en,
                 brand_kana=result.brand_kana,
                 series_en=result.series_en,

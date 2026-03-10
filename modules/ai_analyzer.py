@@ -103,6 +103,8 @@ def _call_api(prompt: str, image_path: Path) -> dict:
             )
 
             text = response.text
+            if text is None:
+                raise ValueError("APIレスポンスのテキストがNullです（画像の読み取りに失敗した可能性）")
 
             # JSONパース
             return _parse_json_response(text)
@@ -225,15 +227,20 @@ def analyze_comment(image_paths: list[Path]) -> dict:
         }
     """
     if not image_paths:
-        return {"abnormality_text": "", "abnormality_type": "", "confidence": {}}
+        return {"title_prefix": "", "abnormality_text": "", "abnormality_type": "", "confidence": {}}
 
     prompt = _load_prompt("comment_analysis.txt")
     all_texts = []
     all_types = []
+    title_prefix = ""
 
     for image_path in image_paths:
         logger.info(f"コメントシール解析: {image_path}")
         result = _call_api(prompt, image_path)
+
+        prefix = result.get("title_prefix", "")
+        if prefix:
+            title_prefix = prefix
 
         text = result.get("abnormality_text", "")
         atype = result.get("abnormality_type", "")
@@ -243,6 +250,7 @@ def analyze_comment(image_paths: list[Path]) -> dict:
             all_types.append(atype)
 
     return {
+        "title_prefix": title_prefix,
         "abnormality_text": " / ".join(all_texts) if all_texts else "",
         "abnormality_type": ", ".join(all_types) if all_types else "",
         "confidence": result.get("confidence", {}) if image_paths else {},
@@ -441,12 +449,16 @@ def parse_batch_results_for_product(
     # コメントデータ: comment1, comment2 を結合
     all_texts = []
     all_types = []
+    title_prefix = ""
     last_confidence = {}
 
     for i in range(1, 3):  # comment1, comment2
         key = f"{product_id}__comment{i}"
         cdata = batch_results.get(key)
         if cdata:
+            prefix = cdata.get("title_prefix", "")
+            if prefix:
+                title_prefix = prefix
             text = cdata.get("abnormality_text", "")
             atype = cdata.get("abnormality_type", "")
             if text:
@@ -456,6 +468,7 @@ def parse_batch_results_for_product(
             last_confidence = cdata.get("confidence", {})
 
     comment_data = {
+        "title_prefix": title_prefix,
         "abnormality_text": " / ".join(all_texts) if all_texts else "",
         "abnormality_type": ", ".join(all_types) if all_types else "",
         "confidence": last_confidence,
