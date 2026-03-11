@@ -9,8 +9,23 @@ from pathlib import Path
 # === プロジェクトルート ===
 PROJECT_ROOT = Path(__file__).parent
 
+# === .envファイル読み込み ===
+_ENV_FILE = PROJECT_ROOT / ".env"
+if _ENV_FILE.exists():
+    with open(_ENV_FILE, encoding="utf-8") as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if not _line or _line.startswith("#"):
+                continue
+            if "=" in _line:
+                _key, _, _val = _line.partition("=")
+                _key = _key.strip()
+                _val = _val.strip().strip("'\"")
+                if _key and _key not in os.environ:
+                    os.environ[_key] = _val
+
 # === APIキー ===
-# 環境変数から取得。未設定の場合は空文字
+# 環境変数 or .envファイルから取得。未設定の場合は空文字
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
 # === AIモデル設定 ===

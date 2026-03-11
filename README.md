@@ -4,9 +4,16 @@ Watch AI Auto-Analysis System
 
 ## 概要
 
-腕時計の撮影画像をAI（Claude Vision API）で自動解析し、ブランド・型番・素材などを構造化データとして抽出するCLIツールです。
+腕時計の撮影画像をAI（Gemini Vision API）で自動解析し、ブランド・型番・素材などを構造化データとして抽出するツールです。
 
 システム仕分け後のデータ（商品ごとにフォルダ分け済み、フォルダ名に管理番号を含む）をそのまま投入できます。
+
+**2つの使い方があります：**
+
+| 方式 | エントリーポイント | 操作 |
+|------|-------------------|------|
+| **ブラウザUI版**（推奨） | `python app.py` | ブラウザでボタン操作。結果の確認・編集もUI上で完結 |
+| CLI版 | `python main.py` | コマンドプロンプトで実行。従来通りの使い方 |
 
 ## セットアップ
 
@@ -14,14 +21,33 @@ Watch AI Auto-Analysis System
 # 依存パッケージのインストール
 pip install -r requirements.txt
 
-# Anthropic APIキーの設定（Windows）
-setx ANTHROPIC_API_KEY "sk-ant-api03-..."
+# Gemini APIキーの設定（Windows）
+setx GEMINI_API_KEY "your-api-key"
 
-# Anthropic APIキーの設定（Mac / Linux）
-export ANTHROPIC_API_KEY=sk-ant-api03-...
+# Gemini APIキーの設定（Mac / Linux）
+export GEMINI_API_KEY=your-api-key
 ```
 
-## 使い方
+> **ブラウザUI版の場合**、APIキーは画面上から設定できます（`.env`ファイルに自動保存）。環境変数の手動設定は不要です。
+
+## 使い方：ブラウザUI版（推奨）
+
+```bash
+# 起動
+python app.py
+```
+
+ブラウザで `http://localhost:8080` を開き、画面上で操作します。
+
+1. APIキーを設定（初回のみ。画面上部の入力欄に貼り付けて「設定」）
+2. 入力フォルダを指定（デフォルト: `./input`）
+3. 「解析開始」ボタンを押す
+4. 結果テーブルで確認・セル編集
+5. 「CSVダウンロード」or「Excelダウンロード」
+
+詳しくは `manual_web_ui.docx` を参照してください。
+
+## 使い方：CLI版
 
 ```bash
 # 基本実行（input/ → output/result_YYYYMMDD_HHMMSS.csv）
@@ -110,13 +136,17 @@ input\
 
 ```
 watch-ai-analyzer/
-├── main.py                    # エントリーポイント（CLI）
+├── app.py                     # エントリーポイント（ブラウザUI版）
+├── main.py                    # エントリーポイント（CLI版）
 ├── config.py                  # 設定ファイル
 ├── requirements.txt           # 依存パッケージ
 ├── README.md                  # このファイル
+├── .env                       # APIキー保存（自動生成・git管理外）
+├── templates/
+│   └── index.html             # ブラウザUI画面
 ├── modules/
 │   ├── folder_scanner.py      # フォルダスキャン・管理番号抽出
-│   ├── ai_analyzer.py         # Claude Vision API連携
+│   ├── ai_analyzer.py         # Gemini Vision API連携
 │   ├── normalizer.py          # データ正規化
 │   ├── category_mapper.py     # カテゴリマッピング
 │   ├── title_generator.py     # タイトル生成
@@ -126,7 +156,8 @@ watch-ai-analyzer/
 │   ├── back_analysis.txt      # 裏蓋画像解析プロンプト
 │   └── comment_analysis.txt   # コメントシール解析プロンプト
 ├── data/
-│   └── mapping.xlsx           # カテゴリマッピングテーブル
+│   ├── mapping.xlsx           # カテゴリマッピングテーブル
+│   └── category_names.xlsx    # カテゴリ番号→名称テーブル
 ├── input/                     # 入力画像フォルダ
-└── output/                    # 出力CSV
+└── output/                    # 出力CSV/Excel
 ```
