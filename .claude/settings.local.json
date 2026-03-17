@@ -10,7 +10,8 @@
       "Bash(python -c \"\nfrom modules.csv_writer import ProductResult, COLUMNS\nprint\\('COLUMNS:', COLUMNS\\)\nr = ProductResult\\(title_prefix='稼働品', abnormality_text='リューズ不動'\\)\nprint\\('to_row:', r.to_row\\(\\)\\)\nprint\\('列数一致:', len\\(COLUMNS\\) == len\\(r.to_row\\(\\)\\)\\)\n\")",
       "Bash(pip3 install:*)",
       "Bash(source /Users/muranagakotaro/watch-ai-analyzer/.venv/bin/activate && pip list 2>/dev/null | grep -i docx)",
-      "Bash(source /Users/muranagakotaro/watch-ai-analyzer/.venv/bin/activate && python3 -c \"\nfrom docx import Document\ndoc = Document\\('/Users/muranagakotaro/watch-ai-analyzer/manual_web_ui.docx'\\)\nprint\\(f'段落数: {len\\(doc.paragraphs\\)}'\\)\nprint\\(f'テーブル数: {len\\(doc.tables\\)}'\\)\nprint\\(f'セクション数: {len\\(doc.sections\\)}'\\)\nprint\\(\\)\nfor i, p in enumerate\\(doc.paragraphs\\):\n    if p.text.strip\\(\\):\n        style = p.style.name if p.style else ''\n        prefix = '  ' if 'Heading' not in style else ''\n        print\\(f'{prefix}[{style}] {p.text[:80]}'\\)\n\" 2>&1)"
+      "Bash(source /Users/muranagakotaro/watch-ai-analyzer/.venv/bin/activate && python3 -c \"\nfrom docx import Document\ndoc = Document\\('/Users/muranagakotaro/watch-ai-analyzer/manual_web_ui.docx'\\)\nprint\\(f'段落数: {len\\(doc.paragraphs\\)}'\\)\nprint\\(f'テーブル数: {len\\(doc.tables\\)}'\\)\nprint\\(f'セクション数: {len\\(doc.sections\\)}'\\)\nprint\\(\\)\nfor i, p in enumerate\\(doc.paragraphs\\):\n    if p.text.strip\\(\\):\n        style = p.style.name if p.style else ''\n        prefix = '  ' if 'Heading' not in style else ''\n        print\\(f'{prefix}[{style}] {p.text[:80]}'\\)\n\" 2>&1)",
+      "Bash(python main.py --input \"tmp/ほぼ空白となったデータ/2793238_時計\" --format csv -v)"
     ]
   }
 }

@@ -6,6 +6,7 @@ Gemini Vision APIに画像を送信し、構造化データとして時計情報
 import base64
 import json
 import logging
+import threading
 import time
 from pathlib import Path
 
@@ -18,10 +19,15 @@ except ImportError:
 
 from config import (
     GEMINI_API_KEY, AI_MODEL, AI_MAX_TOKENS, AI_TEMPERATURE,
-    PROMPTS_DIR, API_MAX_RETRIES, API_RETRY_BASE_DELAY,
+    PROMPTS_DIR, API_MAX_RETRIES, API_RETRY_BASE_DELAY, API_RETRY_MAX_DELAY,
 )
 
 logger = logging.getLogger(__name__)
+
+# === グローバルレートリミッター ===
+# 429発生時に全スレッドを一斉に待機させる
+_rate_limit_lock = threading.Lock()
+_rate_limit_until = 0.0  # このUNIX時刻まで全スレッド待機
 
 
 def _load_prompt(filename: str) -> str:
@@ -64,10 +70,29 @@ def _get_client() -> "genai.Client":
     return genai.Client(api_key=GEMINI_API_KEY)
 
 
+def _wait_for_rate_limit():
+    """グローバルレートリミットの待機が必要なら待つ"""
+    global _rate_limit_until
+    now = time.time()
+    if now < _rate_limit_until:
+        wait = _rate_limit_until - now
+        logger.info(f"レートリミット待機中... {wait:.1f}秒")
+        time.sleep(wait)
+
+
+def _set_rate_limit_cooldown(delay: float):
+    """全スレッドに対してレートリミットのクールダウンを設定"""
+    global _rate_limit_until
+    with _rate_limit_lock:
+        new_until = time.time() + delay
+        if new_until > _rate_limit_until:
+            _rate_limit_until = new_until
+
+
 def _call_api(prompt: str, image_path: Path) -> dict:
     """
     Gemini Vision APIを呼び出し、JSONレスポンスを取得する。
-    リトライ付き（指数バックオフ）。
+    リトライ付き（指数バックオフ + グローバルレートリミッター）。
     """
     if genai is None:
         raise ImportError(
@@ -95,6 +120,9 @@ def _call_api(prompt: str, image_path: Path) -> dict:
     )
 
     for attempt in range(1, API_MAX_RETRIES + 1):
+        # 他スレッドが設定したレートリミット待機
+        _wait_for_rate_limit()
+
         try:
             response = client.models.generate_content(
                 model=AI_MODEL,
@@ -112,8 +140,9 @@ def _call_api(prompt: str, image_path: Path) -> dict:
         except Exception as e:
             error_str = str(e)
             if "429" in error_str or "ResourceExhausted" in error_str:
-                delay = API_RETRY_BASE_DELAY ** attempt
-                logger.warning(f"レートリミット到達。{delay}秒後にリトライ (試行 {attempt}/{API_MAX_RETRIES})")
+                delay = min(API_RETRY_BASE_DELAY * (2 ** (attempt - 1)), API_RETRY_MAX_DELAY)
+                logger.warning(f"レートリミット到達。{delay}秒後にリトライ (試行 {attempt}/{API_MAX_RETRIES}) - {image_path.name}")
+                _set_rate_limit_cooldown(delay)
                 time.sleep(delay)
             elif isinstance(e, json.JSONDecodeError):
                 if attempt < API_MAX_RETRIES:
@@ -122,7 +151,7 @@ def _call_api(prompt: str, image_path: Path) -> dict:
                     logger.error(f"JSON解析失敗（リトライ上限）: {e}")
                     return {}
             else:
-                delay = API_RETRY_BASE_DELAY ** attempt
+                delay = min(API_RETRY_BASE_DELAY * (2 ** (attempt - 1)), API_RETRY_MAX_DELAY)
                 logger.warning(f"APIエラー: {e}。{delay}秒後にリトライ (試行 {attempt}/{API_MAX_RETRIES})")
                 time.sleep(delay)
 

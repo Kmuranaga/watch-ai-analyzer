@@ -51,8 +51,9 @@ IDX_COMMENT1 = 9      # 10枚目: コメントシール1
 IDX_COMMENT2 = 10     # 11枚目: コメントシール2
 
 # === リトライ設定 ===
-API_MAX_RETRIES = 3
+API_MAX_RETRIES = 7
 API_RETRY_BASE_DELAY = 2  # 秒（指数バックオフの基底）
+API_RETRY_MAX_DELAY = 60  # リトライ待機の上限（秒）
 
 # === タイトル生成設定 ===
 TITLE_MAX_LENGTH = 65
@@ -64,5 +65,5 @@ CSV_ENCODING = "utf-8-sig"  # BOM付きUTF-8（Excel互換）
 BATCH_API_ENABLED = True  # Batch APIを利用するか（50%割引）
 
 # === 並列処理設定 ===
-MAX_CONCURRENT_PRODUCTS = 5  # 同時処理する商品数の上限
+MAX_CONCURRENT_PRODUCTS = 3  # 同時処理する商品数の上限
 MAX_CONCURRENT_API_CALLS = 3  # 1商品内の同時API呼び出し数（正面・裏蓋・コメント）
