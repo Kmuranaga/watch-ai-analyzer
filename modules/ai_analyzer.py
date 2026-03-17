@@ -29,6 +29,30 @@ logger = logging.getLogger(__name__)
 _rate_limit_lock = threading.Lock()
 _rate_limit_until = 0.0  # このUNIX時刻まで全スレッド待機
 
+# === レートリミット通知コールバック ===
+# 外部（app.py等）から登録して、レートリミット発生時にUI通知を受け取る
+_rate_limit_callbacks: list = []
+
+
+def register_rate_limit_callback(callback):
+    """
+    レートリミット発生時に呼ばれるコールバックを登録する。
+
+    callback(event_type, detail):
+        event_type: "rate_limit_hit" | "rate_limit_waiting" | "rate_limit_retry_exhausted"
+        detail: dict with keys like attempt, max_retries, delay, image_path
+    """
+    _rate_limit_callbacks.append(callback)
+
+
+def _notify_rate_limit(event_type: str, detail: dict):
+    """登録済みコールバックに通知"""
+    for cb in _rate_limit_callbacks:
+        try:
+            cb(event_type, detail)
+        except Exception:
+            pass
+
 
 def _load_prompt(filename: str) -> str:
     """プロンプトファイルを読み込む"""
@@ -139,9 +163,23 @@ def _call_api(prompt: str, image_path: Path) -> dict:
 
         except Exception as e:
             error_str = str(e)
+            # APIキー不正・認証エラー → リトライ不要、即座に通知して中断
+            if any(keyword in error_str for keyword in ("400", "401", "403", "API_KEY_INVALID", "PermissionDenied", "INVALID_ARGUMENT")):
+                logger.error(f"APIキーエラー: {e}")
+                _notify_rate_limit("api_key_error", {
+                    "error": error_str,
+                    "image_path": str(image_path.name),
+                })
+                return {}
             if "429" in error_str or "ResourceExhausted" in error_str:
                 delay = min(API_RETRY_BASE_DELAY * (2 ** (attempt - 1)), API_RETRY_MAX_DELAY)
                 logger.warning(f"レートリミット到達。{delay}秒後にリトライ (試行 {attempt}/{API_MAX_RETRIES}) - {image_path.name}")
+                _notify_rate_limit("rate_limit_hit", {
+                    "attempt": attempt,
+                    "max_retries": API_MAX_RETRIES,
+                    "delay": delay,
+                    "image_path": str(image_path.name),
+                })
                 _set_rate_limit_cooldown(delay)
                 time.sleep(delay)
             elif isinstance(e, json.JSONDecodeError):
@@ -156,6 +194,9 @@ def _call_api(prompt: str, image_path: Path) -> dict:
                 time.sleep(delay)
 
     logger.error(f"API呼び出し失敗（リトライ上限到達）: {image_path}")
+    _notify_rate_limit("rate_limit_retry_exhausted", {
+        "image_path": str(image_path.name),
+    })
     return {}
 
 

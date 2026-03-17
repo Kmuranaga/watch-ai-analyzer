@@ -30,7 +30,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import config
 from config import DEFAULT_INPUT_DIR, MAX_CONCURRENT_PRODUCTS, CSV_ENCODING
 from modules.folder_scanner import scan_folder
-from modules.ai_analyzer import analyze_front, analyze_back_cover, analyze_comment
+from modules.ai_analyzer import analyze_front, analyze_back_cover, analyze_comment, register_rate_limit_callback
 from modules.normalizer import normalize_all
 from modules.category_mapper import CategoryMapper
 from modules.title_generator import generate_title
@@ -52,6 +52,61 @@ jobs: dict[str, dict] = {}
 
 # カテゴリマッパー（起動時に1回読み込み）
 mapper: CategoryMapper | None = None
+
+# 現在実行中のジョブキュー（レートリミット通知用）
+_active_job_queue: queue.Queue | None = None
+_active_job_lock = threading.Lock()
+
+
+def _on_rate_limit(event_type: str, detail: dict):
+    """レートリミット発生時にSSEキューへ通知を送る"""
+    with _active_job_lock:
+        q = _active_job_queue
+    if q is None:
+        return
+
+    if event_type == "rate_limit_hit":
+        q.put({
+            "event": "rate_limit",
+            "message": (
+                f"⚠ APIレートリミットに到達しました（{detail['image_path']}）。"
+                f"{detail['delay']}秒待機後にリトライします（{detail['attempt']}/{detail['max_retries']}回目）"
+            ),
+            "detail": (
+                "Gemini APIの呼び出し上限に達しました。自動的にリトライしますのでそのままお待ちください。"
+                "頻発する場合は、Google AI Studioでプランのアップグレードをご検討ください。"
+            ),
+            "level": "warning",
+        })
+    elif event_type == "rate_limit_retry_exhausted":
+        q.put({
+            "event": "rate_limit",
+            "message": (
+                f"✕ リトライ上限到達: {detail['image_path']} の解析に失敗しました"
+            ),
+            "detail": (
+                "リトライ回数を使い切りました。この商品は空データとして出力されます。"
+                "処理完了後、失敗した商品だけを別フォルダにまとめて再実行してください。"
+            ),
+            "level": "error",
+        })
+    elif event_type == "api_key_error":
+        q.put({
+            "event": "api_key_error",
+            "message": (
+                f"✕ APIキーエラー: Gemini APIの認証に失敗しました"
+            ),
+            "detail": (
+                "APIキーが無効または間違っている可能性があります。"
+                "画面上部の「Gemini APIキー」欄から正しいキーを再設定してください。"
+                "Google AI Studio (aistudio.google.com) でキーを確認できます。"
+            ),
+            "error": detail.get("error", ""),
+            "level": "error",
+        })
+
+
+register_rate_limit_callback(_on_rate_limit)
 
 
 def get_mapper() -> CategoryMapper:
@@ -233,9 +288,13 @@ def process_product_with_progress(
 
 def run_job(job_id: str, input_dir: str, mode: str, dry_run: bool):
     """バックグラウンドスレッドで解析ジョブを実行"""
+    global _active_job_queue
     job = jobs[job_id]
     job_queue = job["queue"]
     start_time = time.time()
+
+    with _active_job_lock:
+        _active_job_queue = job_queue
 
     try:
         m = get_mapper()
@@ -354,6 +413,9 @@ def run_job(job_id: str, input_dir: str, mode: str, dry_run: bool):
             "message": f"予期しないエラー: {e}",
         })
         job_queue.put({"event": "complete", "results": [], "error": True})
+    finally:
+        with _active_job_lock:
+            _active_job_queue = None
 
 
 # === ルーティング ===

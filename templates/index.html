@@ -151,6 +151,19 @@
       <!-- 現在処理中 -->
       <div id="current-product" class="text-sm text-gray-600 mb-4"></div>
 
+      <!-- レートリミット警告バナー -->
+      <div id="rate-limit-banner" class="hidden mb-4 border border-yellow-400 bg-yellow-50 rounded-lg p-4">
+        <div class="flex items-start gap-3">
+          <div class="text-yellow-600 text-xl flex-shrink-0 mt-0.5">&#9888;</div>
+          <div class="flex-1">
+            <h3 class="font-bold text-yellow-800 text-sm">APIレートリミット検出</h3>
+            <p id="rate-limit-message" class="text-yellow-700 text-sm mt-1"></p>
+            <p id="rate-limit-detail" class="text-yellow-600 text-xs mt-1"></p>
+            <p id="rate-limit-count" class="text-yellow-600 text-xs mt-1 font-semibold"></p>
+          </div>
+        </div>
+      </div>
+
       <!-- ログ出力 -->
       <div class="border border-gray-200 rounded-lg overflow-hidden">
         <div class="bg-gray-100 px-4 py-2 text-xs font-semibold text-gray-600 border-b">処理ログ</div>
@@ -220,6 +233,7 @@
     let resultData = [];
     let categoryNames = {};
     let eventSource = null;
+    let rateLimitCount = 0;
 
     // フィールドキー（テーブル列順）
     const FIELD_KEYS = [
@@ -376,6 +390,8 @@
       document.getElementById('progress-text').textContent = '準備中...';
       document.getElementById('progress-time').textContent = '';
       document.getElementById('current-product').textContent = '';
+      document.getElementById('rate-limit-banner').classList.add('hidden');
+      rateLimitCount = 0;
 
       setStatus('処理中');
       resultData = [];
@@ -447,6 +463,41 @@
             const eta = formatTime(msg.eta);
             document.getElementById('progress-time').textContent =
               `経過: ${elapsed}` + (eta ? ` / 残り: 約${eta}` : '');
+            break;
+
+          case 'rate_limit':
+            rateLimitCount++;
+            addLog(msg.message, msg.level || 'warning');
+            // バナー表示
+            const banner = document.getElementById('rate-limit-banner');
+            banner.classList.remove('hidden');
+            document.getElementById('rate-limit-message').textContent = msg.message;
+            document.getElementById('rate-limit-detail').textContent = msg.detail || '';
+            document.getElementById('rate-limit-count').textContent =
+              `レートリミット発生回数: ${rateLimitCount}回`;
+            // エラーレベルの場合はバナー色を赤に
+            if (msg.level === 'error') {
+              banner.className = banner.className
+                .replace(/border-yellow-400/g, 'border-red-400')
+                .replace(/bg-yellow-50/g, 'bg-red-50');
+            }
+            break;
+
+          case 'api_key_error':
+            addLog(msg.message, 'error');
+            // APIキーエラー専用バナーを表示
+            const apiBanner = document.getElementById('rate-limit-banner');
+            apiBanner.classList.remove('hidden');
+            apiBanner.className = apiBanner.className
+              .replace(/border-yellow-400/g, 'border-red-400')
+              .replace(/bg-yellow-50/g, 'bg-red-50');
+            document.getElementById('rate-limit-message').textContent = msg.message;
+            document.getElementById('rate-limit-detail').textContent = msg.detail || '';
+            document.getElementById('rate-limit-count').textContent =
+              '対処: 画面上部の「Gemini APIキー」欄から正しいキーを再設定してください';
+            // ヘッダーも更新
+            const bannerTitle = apiBanner.querySelector('h3');
+            if (bannerTitle) bannerTitle.textContent = 'APIキーエラー';
             break;
 
           case 'error':

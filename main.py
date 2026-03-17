@@ -39,11 +39,55 @@ from modules.ai_analyzer import (
     analyze_front, analyze_back_cover, analyze_comment,
     create_batch_requests, submit_batch, poll_batch,
     retrieve_batch_results, parse_batch_results_for_product,
+    register_rate_limit_callback,
 )
 from modules.normalizer import normalize_all
 from modules.category_mapper import CategoryMapper
 from modules.title_generator import generate_title
 from modules.csv_writer import ProductResult, write_csv, write_excel
+
+# レートリミット発生カウンター（CLIメッセージ用）
+_cli_rate_limit_count = 0
+
+
+def _cli_rate_limit_handler(event_type: str, detail: dict):
+    """CLI用レートリミット通知ハンドラ"""
+    global _cli_rate_limit_count
+    cli_logger = logging.getLogger(__name__)
+
+    if event_type == "rate_limit_hit":
+        _cli_rate_limit_count += 1
+        cli_logger.warning(
+            f"[レートリミット] APIの呼び出し上限に到達しました。"
+            f"{detail['delay']}秒待機後に自動リトライします "
+            f"(リトライ {detail['attempt']}/{detail['max_retries']}回目, 対象: {detail['image_path']})"
+        )
+        if _cli_rate_limit_count == 1:
+            cli_logger.info(
+                "[対処方法] そのまま待てば自動的にリトライされます。\n"
+                "  頻発する場合の対策:\n"
+                "  1. 商品数を分割して実行する（100件以下を推奨）\n"
+                "  2. Google AI Studioでレートリミットの引き上げを確認する\n"
+                "  3. 時間を空けてから再実行する"
+            )
+    elif event_type == "rate_limit_retry_exhausted":
+        cli_logger.error(
+            f"[リトライ失敗] {detail['image_path']} のAI解析に失敗しました（リトライ上限到達）。\n"
+            "  → この商品は空データとして出力されます。\n"
+            "  → 処理完了後、失敗した商品だけを別フォルダにまとめて再実行してください。"
+        )
+    elif event_type == "api_key_error":
+        cli_logger.error(
+            "[APIキーエラー] Gemini APIの認証に失敗しました。\n"
+            "  APIキーが無効または間違っている可能性があります。\n"
+            "  対処方法:\n"
+            "  1. 正しいAPIキーを設定してください: export GEMINI_API_KEY=your-api-key\n"
+            "  2. Google AI Studio (aistudio.google.com) でキーを確認できます\n"
+            "  3. .envファイルのGEMINI_API_KEYの値を確認してください"
+        )
+
+
+register_rate_limit_callback(_cli_rate_limit_handler)
 
 
 def setup_logging(verbose: bool = False) -> None:
@@ -438,6 +482,11 @@ def main():
     logger.info("=" * 60)
     logger.info(f"処理完了: 合計 {total}件 (正常: {ok}件, エラー/警告: {err}件)")
     logger.info(f"出力ファイル: {output_path}")
+    if _cli_rate_limit_count > 0:
+        logger.warning(
+            f"レートリミット発生回数: {_cli_rate_limit_count}回\n"
+            "  空白データの商品がある場合は、該当商品を別フォルダにまとめて再実行してください。"
+        )
     logger.info("=" * 60)
 
 
