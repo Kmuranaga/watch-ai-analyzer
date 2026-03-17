@@ -532,6 +532,57 @@ def api_category_names():
     return jsonify(m.category_name_map)
 
 
+@app.route("/api/create_retry_folder", methods=["POST"])
+def api_create_retry_folder():
+    """失敗した商品の画像フォルダを再実行用フォルダにコピーする"""
+    import shutil
+
+    data = request.get_json()
+    input_dir = data.get("input_dir", "")
+    failed_numbers = data.get("failed_numbers", [])  # 管理番号のリスト
+
+    if not input_dir or not failed_numbers:
+        return jsonify({"error": "入力フォルダまたは失敗商品リストが空です"}), 400
+
+    input_path = Path(input_dir)
+    if not input_path.exists():
+        return jsonify({"error": f"入力フォルダが見つかりません: {input_dir}"}), 400
+
+    # 再実行用フォルダを作成
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    retry_dir = Path(config.DEFAULT_OUTPUT_DIR) / f"retry_{timestamp}"
+    retry_dir.mkdir(parents=True, exist_ok=True)
+
+    # 失敗した管理番号に一致するフォルダを探してコピー
+    failed_set = set(str(n) for n in failed_numbers)
+    copied = []
+    not_found = []
+
+    for subdir in input_path.iterdir():
+        if not subdir.is_dir():
+            continue
+        # フォルダ名の先頭数字が管理番号と一致するか
+        import re
+        match = re.match(r"^(\d+)", subdir.name)
+        if match and match.group(1) in failed_set:
+            dest = retry_dir / subdir.name
+            try:
+                shutil.copytree(subdir, dest)
+                copied.append(subdir.name)
+                failed_set.discard(match.group(1))
+            except Exception as e:
+                logger.error(f"フォルダコピー失敗: {subdir} → {e}")
+
+    not_found = list(failed_set)
+
+    return jsonify({
+        "retry_dir": str(retry_dir),
+        "copied": len(copied),
+        "copied_folders": copied,
+        "not_found": not_found,
+    })
+
+
 @app.route("/api/regenerate_title", methods=["POST"])
 def api_regenerate_title():
     data = request.get_json()

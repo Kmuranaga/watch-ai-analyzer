@@ -223,6 +223,21 @@
           タイトル再生成
         </button>
       </div>
+
+      <!-- 失敗商品 再実行用 -->
+      <div id="retry-section" class="hidden mt-6 border-t border-gray-200 pt-6">
+        <div class="flex items-start gap-4">
+          <div class="flex-1">
+            <h3 class="text-sm font-bold text-red-700">解析失敗の商品があります</h3>
+            <p id="retry-count" class="text-sm text-gray-600 mt-1"></p>
+          </div>
+          <button id="btn-create-retry" onclick="createRetryFolder()"
+            class="px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg shadow-sm transition-colors whitespace-nowrap">
+            失敗商品を再実行用フォルダにまとめる
+          </button>
+        </div>
+        <div id="retry-result" class="hidden mt-3 p-3 bg-green-50 border border-green-300 rounded-lg text-sm text-green-800"></div>
+      </div>
     </section>
 
   </main>
@@ -521,6 +536,17 @@
               document.getElementById('action-section').classList.remove('hidden');
               document.getElementById('result-summary').textContent =
                 `合計: ${msg.total}件 | 正常: ${msg.ok}件 | エラー/警告: ${msg.errors}件`;
+
+              // 失敗商品（ブランド名が空 = AI解析が完全失敗した商品）を検出
+              const failedProducts = resultData.filter(r =>
+                !r.brand_en && r.status !== 'ドライラン'
+              );
+              if (failedProducts.length > 0) {
+                document.getElementById('retry-section').classList.remove('hidden');
+                document.getElementById('retry-count').textContent =
+                  `${failedProducts.length}件の商品でAI解析が失敗しました（データが空白）。再実行用フォルダにまとめてコピーできます。`;
+                document.getElementById('retry-result').classList.add('hidden');
+              }
             }
             enableButtons();
             break;
@@ -646,6 +672,58 @@
         URL.revokeObjectURL(url);
       } catch (err) {
         alert('ダウンロードエラー: ' + err.message);
+      }
+    }
+
+    async function createRetryFolder() {
+      const failedProducts = resultData.filter(r =>
+        !r.brand_en && r.status !== 'ドライラン'
+      );
+      if (failedProducts.length === 0) {
+        alert('失敗した商品はありません。');
+        return;
+      }
+
+      const failedNumbers = failedProducts.map(r => r.management_number).filter(Boolean);
+      const inputDir = document.getElementById('input-dir').value.trim();
+
+      const btn = document.getElementById('btn-create-retry');
+      btn.disabled = true;
+      btn.textContent = 'フォルダ作成中...';
+
+      try {
+        const response = await fetch('/api/create_retry_folder', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            input_dir: inputDir,
+            failed_numbers: failedNumbers,
+          }),
+        });
+        const data = await response.json();
+
+        if (data.error) {
+          alert('エラー: ' + data.error);
+          return;
+        }
+
+        const resultDiv = document.getElementById('retry-result');
+        resultDiv.classList.remove('hidden');
+        let html = `<p class="font-bold">再実行用フォルダを作成しました</p>`;
+        html += `<p class="mt-1">パス: <code class="bg-green-100 px-2 py-0.5 rounded">${data.retry_dir}</code></p>`;
+        html += `<p class="mt-1">コピー済み: ${data.copied}件</p>`;
+        if (data.not_found.length > 0) {
+          html += `<p class="mt-1 text-yellow-700">見つからなかった管理番号: ${data.not_found.join(', ')}</p>`;
+        }
+        html += `<p class="mt-2 text-gray-600">上記パスを「入力フォルダ」に設定して再実行してください。</p>`;
+        resultDiv.innerHTML = html;
+
+        addLog(`再実行用フォルダ作成完了: ${data.retry_dir} (${data.copied}件)`, null);
+      } catch (err) {
+        alert('フォルダ作成エラー: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '失敗商品を再実行用フォルダにまとめる';
       }
     }
 
