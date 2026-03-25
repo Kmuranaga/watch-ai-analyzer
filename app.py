@@ -50,8 +50,6 @@ logger = logging.getLogger(__name__)
 # ジョブ管理（シングルプロセス想定）
 jobs: dict[str, dict] = {}
 
-# カテゴリマッパー（起動時に1回読み込み）
-mapper: CategoryMapper | None = None
 
 # 現在実行中のジョブキュー（レートリミット通知用）
 _active_job_queue: queue.Queue | None = None
@@ -110,10 +108,7 @@ register_rate_limit_callback(_on_rate_limit)
 
 
 def get_mapper() -> CategoryMapper:
-    global mapper
-    if mapper is None:
-        mapper = CategoryMapper()
-    return mapper
+    return CategoryMapper()
 
 
 def process_product_with_progress(
@@ -675,6 +670,4 @@ if __name__ == "__main__":
     logger.info("腕時計AI自動解析システム - ブラウザUI版")
     logger.info("http://localhost:8080 でアクセスしてください")
     logger.info("=" * 60)
-    # マッパーを事前読み込み
-    get_mapper()
     app.run(host="0.0.0.0", port=8080, debug=False, threaded=True)
