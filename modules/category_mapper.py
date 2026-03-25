@@ -54,6 +54,10 @@ class CategoryMapper:
                 header_row = False
                 continue
 
+            # 空行スキップ
+            if not vals or all(v == "" for v in vals):
+                continue
+
             # セクションヘッダー行スキップ（【...】で始まる行）
             if vals[0].startswith("【"):
                 continue
@@ -120,6 +124,10 @@ class CategoryMapper:
 
             if header_row:
                 header_row = False
+                continue
+
+            # 空行スキップ
+            if not vals or all(v == "" for v in vals):
                 continue
 
             # セクションヘッダー行スキップ
