@@ -2,7 +2,8 @@
 カテゴリマッピングモジュール
 mapping.xlsxを参照し、ブランド+シリーズからカテゴリ番号を決定する
 
-5段階フォールバックロジック:
+6段階フォールバックロジック:
+  優先度0: ブランド+型番 完全一致（最優先）
   優先度1: ブランド+シリーズ 完全一致
   優先度1.5: シリーズ前方一致（例: "G-SHOCK FROGMAN" → "G-SHOCK"）
   優先度2: ブランドのみ一致 →「（その他）」カテゴリ
@@ -29,6 +30,7 @@ class CategoryMapper:
         self.brand_series_map: dict[tuple[str, str], dict] = {}  # (brand, series) -> row
         self.brand_fallback_map: dict[str, dict] = {}  # brand -> fallback row
         self.keyword_map: dict[str, tuple[str, str]] = {}  # keyword -> (brand, series)
+        self.model_number_map: dict[tuple[str, str], dict] = {}  # (brand, model_number) -> row
         self.generic_categories: list[dict] = []  # 汎用カテゴリ
         self.category_name_map: dict[str, str] = {}  # カテゴリ番号 -> カテゴリ名
         self._load()
@@ -58,11 +60,13 @@ class CategoryMapper:
 
             brand_en = vals[0].upper() if vals[0] else ""
             brand_kana = vals[1] if len(vals) > 1 else ""
-            series_en = vals[2].upper() if len(vals) > 2 and vals[2] else ""
-            series_kana = vals[3] if len(vals) > 3 else ""
-            category_id = vals[4] if len(vals) > 4 else ""
-            gender = vals[5] if len(vals) > 5 else ""
-            keywords = vals[7] if len(vals) > 7 else ""
+            model_numbers = vals[2] if len(vals) > 2 else ""  # 型番（カンマ区切り複数可）
+            series_en = vals[3].upper() if len(vals) > 3 and vals[3] else ""
+            series_kana = vals[4] if len(vals) > 4 else ""
+            category_id = vals[5] if len(vals) > 5 else ""
+            gender = vals[6] if len(vals) > 6 else ""
+            keywords = vals[8] if len(vals) > 8 else ""
+            additional_word = vals[10] if len(vals) > 10 else ""  # 追加単語
 
             if not brand_en:
                 continue
@@ -74,6 +78,7 @@ class CategoryMapper:
                 "series_kana": series_kana,
                 "category_id": category_id,
                 "gender": gender,
+                "additional_word": additional_word,
             }
 
             # フォールバック行（「（その他）」）
@@ -99,6 +104,13 @@ class CategoryMapper:
                     kw = kw.strip().upper()
                     if kw:
                         self.keyword_map[kw] = (brand_en, series_en)
+
+            # 型番登録（カンマ区切りで複数可）
+            if model_numbers:
+                for mn in model_numbers.split(","):
+                    mn = mn.strip().upper()
+                    if mn:
+                        self.model_number_map[(brand_en, mn)] = entry
 
         # === Sheet2: 汎用カテゴリ ===
         ws2 = wb["汎用カテゴリ"]
@@ -134,6 +146,7 @@ class CategoryMapper:
             f"マッピング読込完了: ブランド+シリーズ {len(self.brand_series_map)}件, "
             f"フォールバック {len(self.brand_fallback_map)}件, "
             f"キーワード {len(self.keyword_map)}件, "
+            f"型番 {len(self.model_number_map)}件, "
             f"汎用カテゴリ {len(self.generic_categories)}件"
         )
 
@@ -144,7 +157,8 @@ class CategoryMapper:
         gender: str = "",
         movement_type: str = "",
         hand_count: str = "",
-    ) -> tuple[str, str]:
+        model_number: str = "",
+    ) -> tuple[str, str, dict | None]:
         """
         カテゴリ番号を検索する。
 
@@ -154,13 +168,25 @@ class CategoryMapper:
             gender: 性別（メンズ/レディース/ユニセックス）
             movement_type: ムーブメント種別
             hand_count: 針数
+            model_number: 型番（AI解析結果）
 
         Returns:
-            (category_id, match_level)
-            match_level: "brand+series" / "brand_only" / "generic" / "unknown"
+            (category_id, match_level, matched_entry)
+            match_level: "model_number" / "brand+series" / "brand_only" / "generic" / "unknown"
+            matched_entry: 型番マッチ時のエントリ（それ以外はNone）
         """
         brand = brand_en.upper().strip() if brand_en else ""
         series = series_en.upper().strip() if series_en else ""
+        model_num = model_number.upper().strip() if model_number else ""
+
+        # === 優先度0: ブランド+型番 完全一致（最優先） ===
+        if brand and model_num:
+            mn_key = (brand, model_num)
+            if mn_key in self.model_number_map:
+                entry = self.model_number_map[mn_key]
+                if entry["category_id"]:
+                    logger.debug(f"型番一致: {brand}+{model_num} → {entry['category_id']}")
+                    return entry["category_id"], "model_number", entry
 
         # === 優先度1: ブランド+シリーズ 完全一致 ===
         if brand and series:
@@ -169,7 +195,7 @@ class CategoryMapper:
                 entry = self.brand_series_map[key]
                 if entry["category_id"]:
                     logger.debug(f"完全一致: {brand}+{series} → {entry['category_id']}")
-                    return entry["category_id"], "brand+series"
+                    return entry["category_id"], "brand+series", None
 
             # キーワード検索
             if series in self.keyword_map:
@@ -179,7 +205,7 @@ class CategoryMapper:
                     entry = self.brand_series_map[key2]
                     if entry["category_id"]:
                         logger.debug(f"キーワード一致: {series} → {mapped_brand}+{mapped_series}")
-                        return entry["category_id"], "brand+series"
+                        return entry["category_id"], "brand+series", None
 
             # === 優先度1.5: シリーズ前方一致 ===
             # 例: "G-SHOCK FROGMAN" → "G-SHOCK" にフォールバック
@@ -192,25 +218,25 @@ class CategoryMapper:
                         entry = self.brand_series_map[prefix_key]
                         if entry["category_id"]:
                             logger.debug(f"シリーズ前方一致: {brand}+{prefix} → {entry['category_id']}")
-                            return entry["category_id"], "brand+series"
+                            return entry["category_id"], "brand+series", None
 
         # === 優先度2: ブランドのみ一致 →「（その他）」 ===
         if brand and brand in self.brand_fallback_map:
             entry = self.brand_fallback_map[brand]
             if entry["category_id"]:
                 logger.debug(f"ブランドフォールバック: {brand} → {entry['category_id']}")
-                return entry["category_id"], "brand_only"
+                return entry["category_id"], "brand_only", None
 
         # === 優先度3: 汎用カテゴリ ===
         if gender or movement_type:
             cat_id = self._lookup_generic(gender, movement_type, hand_count)
             if cat_id:
                 logger.debug(f"汎用カテゴリ: {gender}/{movement_type}/{hand_count} → {cat_id}")
-                return cat_id, "generic"
+                return cat_id, "generic", None
 
         # === 優先度4: 不明 ===
         logger.debug(f"カテゴリ未確定: {brand}/{series}")
-        return "", "unknown"
+        return "", "unknown", None
 
     def _lookup_generic(self, gender: str, movement: str, hand_count: str) -> str:
         """汎用カテゴリから検索"""

@@ -235,13 +235,26 @@ def process_product_with_progress(
     if result.brand_en and result.series_en and not result.series_kana:
         result.series_kana = mapper.get_series_kana(result.brand_en, result.series_en)
 
-    category_id, match_level = mapper.lookup(
+    category_id, match_level, matched_entry = mapper.lookup(
         brand_en=result.brand_en,
         series_en=result.series_en,
         gender="",
         movement_type=result.movement_type,
         hand_count=result.hand_count,
+        model_number=result.model_number,
     )
+
+    # 型番マッチ時: マッピングのシリーズ・性別で上書き（空白ならAI解析を使用）
+    additional_word = ""
+    if match_level == "model_number" and matched_entry:
+        if matched_entry["series_en"]:
+            result.series_en = matched_entry["series_en"]
+        if matched_entry["series_kana"]:
+            result.series_kana = matched_entry["series_kana"]
+        if matched_entry["gender"]:
+            result.gender = matched_entry["gender"]
+        additional_word = matched_entry.get("additional_word", "")
+
     if match_level == "generic":
         result.category_id = ""
         errors.append("カテゴリ未確定（汎用・性別不明）")
@@ -270,6 +283,7 @@ def process_product_with_progress(
         material=result.material,
         water_resistance=result.water_resistance,
         movement_type=result.movement_type,
+        additional_word=additional_word,
     )
 
     result.status = " / ".join(errors) if errors else "正常"
@@ -599,6 +613,7 @@ def api_regenerate_title():
         material=data.get("material", ""),
         water_resistance=data.get("water_resistance", ""),
         movement_type=data.get("movement_type", ""),
+        additional_word=data.get("additional_word", ""),
     )
     return jsonify({"title": title})
 

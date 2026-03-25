@@ -46,6 +46,7 @@ def generate_title(
     material: str = "",
     water_resistance: str = "",
     movement_type: str = "",
+    additional_word: str = "",
 ) -> str:
     """
     空白抜き65文字制限のタイトルを生成する。
@@ -71,7 +72,7 @@ def generate_title(
         case_shape,
     ]
 
-    # 任意要素（削除優先順: ムーブメント → 防水 → 素材）
+    # 任意要素（削除優先順: 追加単語 → ムーブメント → 防水 → 素材）
     optional = [
         ("material", material),
         ("water_resistance", water_resistance),
@@ -85,6 +86,11 @@ def generate_title(
     # 任意要素を追加
     optional_parts = [(name, value) for name, value in optional if value]
     parts.extend([value for _, value in optional_parts])
+
+    # 追加単語を末尾に追加
+    if additional_word:
+        parts.append(additional_word)
+        optional_parts.append(("additional_word", additional_word))
 
     # タイトルを結合
     title = " ".join(parts)
@@ -100,7 +106,7 @@ def generate_title(
         return title
 
     # 超過時: 任意要素を削除優先順に除去
-    removal_order = ["movement_type", "water_resistance", "material"]
+    removal_order = ["additional_word", "movement_type", "water_resistance", "material"]
 
     for target in removal_order:
         optional_parts = [(n, v) for n, v in optional_parts if n != target]
