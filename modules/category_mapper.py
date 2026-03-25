@@ -36,6 +36,15 @@ class CategoryMapper:
         self._load()
         self._load_category_names()
 
+    @staticmethod
+    def _cell_to_str(v) -> str:
+        """Excelセル値を文字列に変換（floatの.0を除去）"""
+        if v is None:
+            return ""
+        if isinstance(v, float) and v == int(v):
+            return str(int(v)).strip()
+        return str(v).strip()
+
     def _load(self):
         """mapping.xlsx を読み込む"""
         if not self.mapping_file.exists():
@@ -47,7 +56,7 @@ class CategoryMapper:
         ws1 = wb["ブランド別マッピング"]
         header_row = True
         for row in ws1.iter_rows(min_row=1, values_only=True):
-            vals = [str(v).strip() if v is not None else "" for v in row]
+            vals = [self._cell_to_str(v) for v in row]
 
             # ヘッダー行スキップ
             if header_row:
@@ -120,7 +129,7 @@ class CategoryMapper:
         ws2 = wb["汎用カテゴリ"]
         header_row = True
         for row in ws2.iter_rows(min_row=1, values_only=True):
-            vals = [str(v).strip() if v is not None else "" for v in row]
+            vals = [self._cell_to_str(v) for v in row]
 
             if header_row:
                 header_row = False
@@ -315,7 +324,7 @@ class CategoryMapper:
             if header_row:
                 header_row = False
                 continue
-            vals = [str(v).strip() if v is not None else "" for v in row]
+            vals = [self._cell_to_str(v) for v in row]
             cat_id = vals[0] if vals else ""
             cat_name = vals[1] if len(vals) > 1 else ""
             if cat_id and cat_name:
