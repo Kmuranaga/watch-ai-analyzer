@@ -51,7 +51,7 @@ IDX_COMMENT1 = 9      # 10枚目: コメントシール1
 IDX_COMMENT2 = 10     # 11枚目: コメントシール2
 
 # === リトライ設定 ===
-API_MAX_RETRIES = 7
+API_MAX_RETRIES = 2
 API_RETRY_BASE_DELAY = 2  # 秒（指数バックオフの基底）
 API_RETRY_MAX_DELAY = 60  # リトライ待機の上限（秒）
 
