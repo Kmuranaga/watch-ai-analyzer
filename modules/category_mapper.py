@@ -31,6 +31,7 @@ class CategoryMapper:
         self.brand_fallback_map: dict[str, dict] = {}  # brand -> fallback row
         self.keyword_map: dict[str, tuple[str, str]] = {}  # keyword -> (brand, series)
         self.model_number_map: dict[tuple[str, str], dict] = {}  # (brand, model_number) -> row
+        self.brand_alias_map: dict[str, str] = {}  # brand_alias -> canonical_brand
         self.generic_categories: list[dict] = []  # 汎用カテゴリ
         self.category_name_map: dict[str, str] = {}  # カテゴリ番号 -> カテゴリ名
         self._load()
@@ -73,13 +74,14 @@ class CategoryMapper:
 
             brand_en = vals[0].upper() if vals[0] else ""
             brand_kana = vals[1] if len(vals) > 1 else ""
-            model_numbers = vals[2] if len(vals) > 2 else ""  # 型番（カンマ区切り複数可）
-            series_en = vals[3].upper() if len(vals) > 3 and vals[3] else ""
-            series_kana = vals[4] if len(vals) > 4 else ""
-            category_id = vals[5] if len(vals) > 5 else ""
-            gender = vals[6] if len(vals) > 6 else ""
-            keywords = vals[8] if len(vals) > 8 else ""
-            additional_word = vals[10] if len(vals) > 10 else ""  # 追加単語
+            brand_aliases = vals[2] if len(vals) > 2 else ""  # ブランド別名
+            model_numbers = vals[3] if len(vals) > 3 else ""  # 型番（カンマ区切り複数可）
+            series_en = vals[4].upper() if len(vals) > 4 and vals[4] else ""
+            series_kana = vals[5] if len(vals) > 5 else ""
+            category_id = vals[6] if len(vals) > 6 else ""
+            gender = vals[7] if len(vals) > 7 else ""
+            keywords = vals[9] if len(vals) > 9 else ""
+            additional_word = vals[11] if len(vals) > 11 else ""  # 追加単語
 
             if not brand_en:
                 continue
@@ -125,6 +127,13 @@ class CategoryMapper:
                     if mn:
                         self.model_number_map[(brand_en, mn)] = entry
 
+            # ブランド別名登録（カンマ区切りで複数可）
+            if brand_aliases:
+                for alias in brand_aliases.split(","):
+                    alias = alias.strip().upper()
+                    if alias and alias != brand_en:
+                        self.brand_alias_map[alias] = brand_en
+
         # === Sheet2: 汎用カテゴリ ===
         ws2 = wb["汎用カテゴリ"]
         header_row = True
@@ -164,6 +173,7 @@ class CategoryMapper:
             f"フォールバック {len(self.brand_fallback_map)}件, "
             f"キーワード {len(self.keyword_map)}件, "
             f"型番 {len(self.model_number_map)}件, "
+            f"ブランド別名 {len(self.brand_alias_map)}件, "
             f"汎用カテゴリ {len(self.generic_categories)}件"
         )
 
@@ -195,6 +205,9 @@ class CategoryMapper:
         brand = brand_en.upper().strip() if brand_en else ""
         series = series_en.upper().strip() if series_en else ""
         model_num = model_number.upper().strip() if model_number else ""
+
+        # ブランド別名を正規名に変換
+        brand = self._resolve_brand(brand)
 
         # === 優先度0: ブランド+型番 完全一致（最優先） ===
         if brand and model_num:
@@ -310,6 +323,14 @@ class CategoryMapper:
 
         return ""
 
+    def _resolve_brand(self, brand: str) -> str:
+        """ブランド別名を正規名に変換する。別名でなければそのまま返す。"""
+        if brand in self.brand_alias_map:
+            resolved = self.brand_alias_map[brand]
+            logger.debug(f"ブランド別名解決: {brand} → {resolved}")
+            return resolved
+        return brand
+
     def _load_category_names(self):
         """カテゴリ名xlsxを読み込む"""
         category_name_file = CATEGORY_NAME_FILE
@@ -339,6 +360,7 @@ class CategoryMapper:
     def get_brand_kana(self, brand_en: str) -> str:
         """ブランドのカナ表記を取得"""
         brand = brand_en.upper().strip() if brand_en else ""
+        brand = self._resolve_brand(brand)
 
         # まずブランド+シリーズマップから検索
         for (b, _), entry in self.brand_series_map.items():
@@ -354,6 +376,7 @@ class CategoryMapper:
     def get_series_kana(self, brand_en: str, series_en: str) -> str:
         """シリーズのカナ表記を取得"""
         brand = brand_en.upper().strip() if brand_en else ""
+        brand = self._resolve_brand(brand)
         series = series_en.upper().strip() if series_en else ""
 
         key = (brand, series)
