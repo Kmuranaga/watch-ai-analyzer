@@ -55,9 +55,6 @@ API_MAX_RETRIES = 2
 API_RETRY_BASE_DELAY = 2  # 秒（指数バックオフの基底）
 API_RETRY_MAX_DELAY = 60  # リトライ待機の上限（秒）
 
-# === タイトル生成設定 ===
-TITLE_MAX_LENGTH = 65
-
 # === CSV出力設定 ===
 CSV_ENCODING = "utf-8-sig"  # BOM付きUTF-8（Excel互換）
 
