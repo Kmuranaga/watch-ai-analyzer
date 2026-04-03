@@ -53,6 +53,7 @@ class ProductResult:
     dial_color: str = ""              # 文字盤色
     hand_count: str = ""              # 針数
     case_shape: str = ""              # ケース形状
+    gender: str = ""                  # 性別（メンズ/レディース/ユニセックス/不明）
     title_prefix: str = ""            # タイトル先頭文言
     abnormality_text: str = ""        # 異常内容
     status: str = "正常"              # 処理ステータス

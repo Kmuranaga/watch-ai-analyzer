@@ -229,6 +229,8 @@ def analyze_front(image_path: Path) -> dict:
             "dial_color": str,
             "hand_count": str,
             "movement_type": str,
+            "case_shape": str,
+            "gender": str,
             "confidence": dict,
         }
     """
@@ -246,6 +248,7 @@ def analyze_front(image_path: Path) -> dict:
         "hand_count": "",
         "movement_type": "",
         "case_shape": "",
+        "gender": "",
         "confidence": {},
     }
     for key, default in defaults.items():

@@ -187,6 +187,7 @@ def process_single_product(
     result.dial_color = normalized.get("dial_color", "")
     result.hand_count = normalized.get("hand_count", "")
     result.case_shape = normalized.get("case_shape", "")
+    result.gender = normalized.get("gender", "")
     result.title_prefix = comment_data.get("title_prefix", "")
     result.abnormality_text = comment_data.get("abnormality_text", "")
 
@@ -200,7 +201,7 @@ def process_single_product(
     category_id, match_level, matched_entry = mapper.lookup(
         brand_en=result.brand_en,
         series_en=result.series_en,
-        gender="",  # テスト版では性別推定なし
+        gender=result.gender,
         movement_type=result.movement_type,
         hand_count=result.hand_count,
         model_number=result.model_number,
@@ -217,11 +218,7 @@ def process_single_product(
             result.gender = matched_entry["gender"]
         additional_word = matched_entry.get("additional_word", "")
 
-    if match_level == "generic":
-        result.category_id = ""
-        errors.append("カテゴリ未確定（汎用・性別不明）")
-    else:
-        result.category_id = category_id
+    result.category_id = category_id
 
     # カテゴリ名の逆引き
     if result.category_id:
@@ -404,6 +401,7 @@ def main():
             result.dial_color = normalized.get("dial_color", "")
             result.hand_count = normalized.get("hand_count", "")
             result.case_shape = normalized.get("case_shape", "")
+            result.gender = normalized.get("gender", "")
             result.title_prefix = comment_data.get("title_prefix", "")
             result.abnormality_text = comment_data.get("abnormality_text", "")
 
@@ -416,7 +414,7 @@ def main():
             category_id, match_level, matched_entry = mapper.lookup(
                 brand_en=result.brand_en,
                 series_en=result.series_en,
-                gender="",
+                gender=result.gender,
                 movement_type=result.movement_type,
                 hand_count=result.hand_count,
                 model_number=result.model_number,
@@ -433,11 +431,7 @@ def main():
                     result.gender = matched_entry["gender"]
                 additional_word = matched_entry.get("additional_word", "")
 
-            if match_level == "generic":
-                result.category_id = ""
-                errors.append("カテゴリ未確定（汎用・性別不明）")
-            else:
-                result.category_id = category_id
+            result.category_id = category_id
 
             # カテゴリ名の逆引き
             if result.category_id:

@@ -42,6 +42,10 @@ def normalize_all(data: dict) -> dict:
     if result.get("case_shape"):
         result["case_shape"] = normalize_case_shape(result["case_shape"])
 
+    # 性別正規化
+    if result.get("gender"):
+        result["gender"] = normalize_gender(result["gender"])
+
     return result
 
 
@@ -258,6 +262,52 @@ CASE_SHAPE_MAP = {
     "rectangular": "レクタンギュラー",
     "rectangle": "レクタンギュラー",
 }
+
+
+# === 性別変換テーブル ===
+GENDER_MAP = {
+    "mens": "メンズ",
+    "men": "メンズ",
+    "men's": "メンズ",
+    "male": "メンズ",
+    "メンズ": "メンズ",
+    "男性": "メンズ",
+    "男": "メンズ",
+    "ladies": "レディース",
+    "lady": "レディース",
+    "ladies'": "レディース",
+    "women": "レディース",
+    "women's": "レディース",
+    "female": "レディース",
+    "レディース": "レディース",
+    "女性": "レディース",
+    "女": "レディース",
+    "unisex": "ユニセックス",
+    "uni-sex": "ユニセックス",
+    "ユニセックス": "ユニセックス",
+    "男女兼用": "ユニセックス",
+    "unknown": "不明",
+    "不明": "不明",
+}
+
+
+def normalize_gender(gender: str) -> str:
+    """性別を統一形式（メンズ/レディース/ユニセックス/不明）に変換"""
+    if not gender:
+        return ""
+
+    normalized = normalize_text(gender).lower()
+
+    if normalized in GENDER_MAP:
+        return GENDER_MAP[normalized]
+
+    # 部分一致
+    for key, value in GENDER_MAP.items():
+        if key in normalized:
+            return value
+
+    logger.debug(f"性別の変換なし: {gender}")
+    return gender.strip()
 
 
 def normalize_case_shape(shape: str) -> str:
