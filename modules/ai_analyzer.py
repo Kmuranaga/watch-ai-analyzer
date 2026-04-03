@@ -113,10 +113,15 @@ def _set_rate_limit_cooldown(delay: float):
             _rate_limit_until = new_until
 
 
-def _call_api(prompt: str, image_path: Path) -> dict:
+def _call_api(prompt: str, image_path: Path, extra_images: list[Path] | None = None) -> dict:
     """
     Gemini Vision APIを呼び出し、JSONレスポンスを取得する。
     リトライ付き（指数バックオフ + グローバルレートリミッター）。
+
+    Args:
+        prompt: プロンプトテキスト
+        image_path: メイン画像パス
+        extra_images: 追加画像パスのリスト（任意）
     """
     if genai is None:
         raise ImportError(
@@ -131,12 +136,26 @@ def _call_api(prompt: str, image_path: Path) -> dict:
         )
 
     client = _get_client()
-    image_data, media_type = _encode_image(image_path)
 
-    image_part = types.Part.from_bytes(
-        data=base64.standard_b64decode(image_data),
-        mime_type=media_type,
-    )
+    # メイン画像
+    image_data, media_type = _encode_image(image_path)
+    image_parts = [
+        types.Part.from_bytes(
+            data=base64.standard_b64decode(image_data),
+            mime_type=media_type,
+        )
+    ]
+
+    # 追加画像
+    if extra_images:
+        for extra_path in extra_images:
+            extra_data, extra_media_type = _encode_image(extra_path)
+            image_parts.append(
+                types.Part.from_bytes(
+                    data=base64.standard_b64decode(extra_data),
+                    mime_type=extra_media_type,
+                )
+            )
 
     config = types.GenerateContentConfig(
         max_output_tokens=AI_MAX_TOKENS,
@@ -150,7 +169,7 @@ def _call_api(prompt: str, image_path: Path) -> dict:
         try:
             response = client.models.generate_content(
                 model=AI_MODEL,
-                contents=[image_part, prompt],
+                contents=[*image_parts, prompt],
                 config=config,
             )
 
@@ -216,9 +235,10 @@ def _parse_json_response(text: str) -> dict:
 
 # === 各解析関数 ===
 
-def analyze_front(image_path: Path) -> dict:
+def analyze_front(image_path: Path, diagonal_image_path: Path | None = None) -> dict:
     """
     正面画像を解析し、ブランド・シリーズ・文字盤色・針数・ムーブメントを取得する。
+    2枚目（斜め画像）が渡された場合、バンド形状等からgender判定の精度を向上させる。
 
     Returns:
         {
@@ -235,8 +255,11 @@ def analyze_front(image_path: Path) -> dict:
         }
     """
     logger.info(f"正面画像解析: {image_path}")
+    if diagonal_image_path:
+        logger.info(f"斜め画像も使用: {diagonal_image_path}")
     prompt = _load_prompt("front_analysis.txt")
-    result = _call_api(prompt, image_path)
+    extra_images = [diagonal_image_path] if diagonal_image_path else None
+    result = _call_api(prompt, image_path, extra_images=extra_images)
 
     # デフォルト値の補完
     defaults = {
@@ -332,20 +355,27 @@ def analyze_comment(image_paths: list[Path]) -> dict:
 
 # === Batch API対応 ===
 
-def _build_batch_request(custom_id: str, prompt: str, image_path: Path) -> dict:
+def _build_batch_request(custom_id: str, prompt: str, image_path: Path, extra_images: list[Path] | None = None) -> dict:
     """1つのBatch APIリクエストを組み立てる（InlinedRequest形式）"""
     image_data, media_type = _encode_image(image_path)
     image_bytes = base64.standard_b64decode(image_data)
+
+    parts = [types.Part.from_bytes(data=image_bytes, mime_type=media_type)]
+
+    if extra_images:
+        for extra_path in extra_images:
+            extra_data, extra_media_type = _encode_image(extra_path)
+            extra_bytes = base64.standard_b64decode(extra_data)
+            parts.append(types.Part.from_bytes(data=extra_bytes, mime_type=extra_media_type))
+
+    parts.append(types.Part.from_text(text=prompt))
 
     return {
         "metadata": {"custom_id": custom_id},
         "contents": [
             types.Content(
                 role="user",
-                parts=[
-                    types.Part.from_bytes(data=image_bytes, mime_type=media_type),
-                    types.Part.from_text(text=prompt),
-                ],
+                parts=parts,
             )
         ],
         "config": types.GenerateContentConfig(
@@ -375,7 +405,8 @@ def create_batch_requests(products: list) -> list[dict]:
         pid = product.product_id
 
         if product.front_image:
-            requests.append(_build_batch_request(f"{pid}__front", front_prompt, product.front_image))
+            extra = [product.diagonal_image] if product.diagonal_image else None
+            requests.append(_build_batch_request(f"{pid}__front", front_prompt, product.front_image, extra_images=extra))
 
         if product.back_cover_image:
             requests.append(_build_batch_request(f"{pid}__back", back_prompt, product.back_cover_image))

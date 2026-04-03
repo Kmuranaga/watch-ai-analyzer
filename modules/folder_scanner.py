@@ -49,6 +49,11 @@ class ProductImages:
         return self.images[0] if len(self.images) > 0 else None
 
     @property
+    def diagonal_image(self) -> Path | None:
+        """2枚目: 斜め画像（バンド確認用）"""
+        return self.images[1] if len(self.images) > 1 else None
+
+    @property
     def back_cover_image(self) -> Path | None:
         """8枚目: 裏蓋画像"""
         return self.images[7] if len(self.images) > 7 else None

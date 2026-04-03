@@ -145,7 +145,7 @@ def process_single_product(
         futures = {}
 
         if product.front_image:
-            futures[executor.submit(analyze_front, product.front_image)] = "front"
+            futures[executor.submit(analyze_front, product.front_image, product.diagonal_image)] = "front"
         else:
             errors.append("正面画像なし")
 
