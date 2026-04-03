@@ -31,6 +31,8 @@ class CategoryMapper:
         self.brand_fallback_map: dict[str, dict] = {}  # brand -> fallback row
         self.keyword_map: dict[str, tuple[str, str]] = {}  # keyword -> (brand, series)
         self.model_number_map: dict[tuple[str, str], dict] = {}  # (brand, model_number) -> row
+        self.model_number_only_map: dict[str, dict] = {}  # model_number -> row（型番のみ検索用）
+        self.brand_additional_word_map: dict[str, str] = {}  # brand -> additional_word（ブランドのみ検索用）
         self.brand_alias_map: dict[str, str] = {}  # brand_alias -> canonical_brand
         self.generic_categories: list[dict] = []  # 汎用カテゴリ
         self.category_name_map: dict[str, str] = {}  # カテゴリ番号 -> カテゴリ名
@@ -126,6 +128,12 @@ class CategoryMapper:
                     mn = mn.strip().upper()
                     if mn:
                         self.model_number_map[(brand_en, mn)] = entry
+                        if mn not in self.model_number_only_map:
+                            self.model_number_only_map[mn] = entry
+
+            # ブランド別追加単語登録
+            if additional_word and brand_en not in self.brand_additional_word_map:
+                self.brand_additional_word_map[brand_en] = additional_word
 
             # ブランド別名登録（カンマ区切りで複数可）
             if brand_aliases:
@@ -267,6 +275,33 @@ class CategoryMapper:
         # === 優先度4: 不明 ===
         logger.debug(f"カテゴリ未確定: {brand}/{series}")
         return "", "unknown", None
+
+    def get_additional_word(self, brand_en: str, model_number: str) -> str:
+        """ブランドまたは型番のどちらかが一致したら追加単語を返す"""
+        brand = brand_en.upper().strip() if brand_en else ""
+        model_num = model_number.upper().strip() if model_number else ""
+
+        brand = self._resolve_brand(brand)
+
+        # 優先度1: ブランド+型番の完全一致
+        if brand and model_num:
+            mn_key = (brand, model_num)
+            if mn_key in self.model_number_map:
+                word = self.model_number_map[mn_key].get("additional_word", "")
+                if word:
+                    return word
+
+        # 優先度2: 型番のみ一致
+        if model_num and model_num in self.model_number_only_map:
+            word = self.model_number_only_map[model_num].get("additional_word", "")
+            if word:
+                return word
+
+        # 優先度3: ブランドのみ一致
+        if brand and brand in self.brand_additional_word_map:
+            return self.brand_additional_word_map[brand]
+
+        return ""
 
     def _lookup_generic(self, gender: str, movement: str, hand_count: str) -> str:
         """汎用カテゴリから検索"""

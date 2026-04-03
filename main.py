@@ -421,7 +421,6 @@ def main():
             )
 
             # 型番マッチ時: マッピングのシリーズ・性別で上書き（空白ならAI解析を使用）
-            additional_word = ""
             if match_level == "model_number" and matched_entry:
                 if matched_entry["series_en"]:
                     result.series_en = matched_entry["series_en"]
@@ -429,7 +428,9 @@ def main():
                     result.series_kana = matched_entry["series_kana"]
                 if matched_entry["gender"]:
                     result.gender = matched_entry["gender"]
-                additional_word = matched_entry.get("additional_word", "")
+
+            # 追加単語: ブランドor型番のどちらかが一致したら追加
+            additional_word = mapper.get_additional_word(result.brand_en, result.model_number)
 
             result.category_id = category_id
 
