@@ -164,6 +164,7 @@ class CategoryMapper:
             movement = vals[1] if len(vals) > 1 else ""
             hand_type = vals[2] if len(vals) > 2 else ""
             category_id = vals[3] if len(vals) > 3 else ""
+            additional_word = vals[5] if len(vals) > 5 else ""  # F列: 追加単語
 
             if not category_id:
                 continue
@@ -173,6 +174,7 @@ class CategoryMapper:
                 "movement": movement,
                 "hand_type": hand_type,
                 "category_id": category_id,
+                "additional_word": additional_word,
             })
 
         wb.close()
@@ -208,7 +210,7 @@ class CategoryMapper:
         Returns:
             (category_id, match_level, matched_entry)
             match_level: "model_number" / "brand+series" / "brand_only" / "generic" / "unknown"
-            matched_entry: 型番マッチ時のエントリ（それ以外はNone）
+            matched_entry: マッチ時のエントリ（"unknown"の場合のみNone）
         """
         brand = brand_en.upper().strip() if brand_en else ""
         series = series_en.upper().strip() if series_en else ""
@@ -233,7 +235,7 @@ class CategoryMapper:
                 entry = self.brand_series_map[key]
                 if entry["category_id"]:
                     logger.debug(f"完全一致: {brand}+{series} → {entry['category_id']}")
-                    return entry["category_id"], "brand+series", None
+                    return entry["category_id"], "brand+series", entry
 
             # キーワード検索
             if series in self.keyword_map:
@@ -243,7 +245,7 @@ class CategoryMapper:
                     entry = self.brand_series_map[key2]
                     if entry["category_id"]:
                         logger.debug(f"キーワード一致: {series} → {mapped_brand}+{mapped_series}")
-                        return entry["category_id"], "brand+series", None
+                        return entry["category_id"], "brand+series", entry
 
             # === 優先度1.5: シリーズ前方一致 ===
             # 例: "G-SHOCK FROGMAN" → "G-SHOCK" にフォールバック
@@ -256,21 +258,21 @@ class CategoryMapper:
                         entry = self.brand_series_map[prefix_key]
                         if entry["category_id"]:
                             logger.debug(f"シリーズ前方一致: {brand}+{prefix} → {entry['category_id']}")
-                            return entry["category_id"], "brand+series", None
+                            return entry["category_id"], "brand+series", entry
 
         # === 優先度2: ブランドのみ一致 →「（その他）」 ===
         if brand and brand in self.brand_fallback_map:
             entry = self.brand_fallback_map[brand]
             if entry["category_id"]:
                 logger.debug(f"ブランドフォールバック: {brand} → {entry['category_id']}")
-                return entry["category_id"], "brand_only", None
+                return entry["category_id"], "brand_only", entry
 
         # === 優先度3: 汎用カテゴリ ===
         if gender or movement_type:
-            cat_id = self._lookup_generic(gender, movement_type, hand_count)
-            if cat_id:
-                logger.debug(f"汎用カテゴリ: {gender}/{movement_type}/{hand_count} → {cat_id}")
-                return cat_id, "generic", None
+            generic_entry = self._lookup_generic(gender, movement_type, hand_count)
+            if generic_entry:
+                logger.debug(f"汎用カテゴリ: {gender}/{movement_type}/{hand_count} → {generic_entry['category_id']}")
+                return generic_entry["category_id"], "generic", generic_entry
 
         # === 優先度4: 不明 ===
         logger.debug(f"カテゴリ未確定: {brand}/{series}")
@@ -303,8 +305,8 @@ class CategoryMapper:
 
         return ""
 
-    def _lookup_generic(self, gender: str, movement: str, hand_count: str) -> str:
-        """汎用カテゴリから検索"""
+    def _lookup_generic(self, gender: str, movement: str, hand_count: str) -> dict | None:
+        """汎用カテゴリから検索。マッチしたエントリを返す。"""
         # 針数の正規化
         hand_type = self._normalize_hand_type(hand_count)
 
@@ -320,7 +322,7 @@ class CategoryMapper:
                 continue
             # 全条件一致（または条件なし）
             if cat["category_id"]:
-                return cat["category_id"]
+                return cat
 
         # フォールバック: ムーブメント「その他」で再検索
         for cat in self.generic_categories:
@@ -329,9 +331,9 @@ class CategoryMapper:
             if cat["movement"] and movement and cat["movement"] != movement:
                 continue
             if cat["hand_type"] == "その他" and cat["category_id"]:
-                return cat["category_id"]
+                return cat
 
-        return ""
+        return None
 
     def _normalize_hand_type(self, hand_count: str) -> str:
         """針数文字列を汎用カテゴリの形式に変換"""

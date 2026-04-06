@@ -216,8 +216,21 @@ def process_single_product(
         if matched_entry["gender"]:
             result.gender = matched_entry["gender"]
 
-    # 追加単語: ブランドor型番のどちらかが一致したら追加
-    additional_word = mapper.get_additional_word(result.brand_en, result.model_number)
+    # タイトル用の性別・追加単語を決定
+    if match_level in ("model_number", "brand+series", "brand_only"):
+        # ブランドあり: マッピングの性別（空なら追記しない）
+        title_gender = matched_entry.get("gender", "") if matched_entry else ""
+        # ブランドあり: ブランド別マッピングの追加単語
+        additional_word = mapper.get_additional_word(result.brand_en, result.model_number)
+    elif match_level == "generic" and matched_entry:
+        # ブランドなし: AI解析の性別（「不明」なら追記しない）
+        title_gender = result.gender if result.gender and result.gender != "不明" else ""
+        # ブランドなし: 汎用カテゴリの追加単語
+        additional_word = matched_entry.get("additional_word", "")
+    else:
+        # unknown: AI解析の性別（「不明」なら追記しない）
+        title_gender = result.gender if result.gender and result.gender != "不明" else ""
+        additional_word = ""
 
     result.category_id = category_id
 
@@ -244,6 +257,7 @@ def process_single_product(
         material=result.material,
         water_resistance=result.water_resistance,
         movement_type=result.movement_type,
+        gender=title_gender,
         additional_word=additional_word,
     )
 
@@ -430,8 +444,21 @@ def main():
                 if matched_entry["gender"]:
                     result.gender = matched_entry["gender"]
 
-            # 追加単語: ブランドor型番のどちらかが一致したら追加
-            additional_word = mapper.get_additional_word(result.brand_en, result.model_number)
+            # タイトル用の性別・追加単語を決定
+            if match_level in ("model_number", "brand+series", "brand_only"):
+                # ブランドあり: マッピングの性別（空なら追記しない）
+                title_gender = matched_entry.get("gender", "") if matched_entry else ""
+                # ブランドあり: ブランド別マッピングの追加単語
+                additional_word = mapper.get_additional_word(result.brand_en, result.model_number)
+            elif match_level == "generic" and matched_entry:
+                # ブランドなし: AI解析の性別（「不明」なら追記しない）
+                title_gender = result.gender if result.gender and result.gender != "不明" else ""
+                # ブランドなし: 汎用カテゴリの追加単語
+                additional_word = matched_entry.get("additional_word", "")
+            else:
+                # unknown: AI解析の性別（「不明」なら追記しない）
+                title_gender = result.gender if result.gender and result.gender != "不明" else ""
+                additional_word = ""
 
             result.category_id = category_id
 
@@ -458,6 +485,7 @@ def main():
                 material=result.material,
                 water_resistance=result.water_resistance,
                 movement_type=result.movement_type,
+                gender=title_gender,
                 additional_word=additional_word,
             )
 

@@ -21,6 +21,7 @@ def generate_title(
     material: str = "",
     water_resistance: str = "",
     movement_type: str = "",
+    gender: str = "",
     additional_word: str = "",
 ) -> str:
     """
@@ -41,6 +42,7 @@ def generate_title(
         material,
         water_resistance,
         movement_type,
+        gender,
         additional_word,
     ]
 
