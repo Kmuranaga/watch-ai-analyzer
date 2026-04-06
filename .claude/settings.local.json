@@ -1,4 +1,19 @@
 {
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // .tool_response.filePath' | { read -r f; if echo \"$f\" | grep -qE '[.]py$'; then cd /Users/muranagakotaro/watch-ai-analyzer && source .venv/bin/activate && python -m pytest tests/ -q 2>&1; fi; } || true",
+            "timeout": 30,
+            "statusMessage": "Running pytest..."
+          }
+        ]
+      }
+    ]
+  },
   "permissions": {
     "allow": [
       "Bash(git:*)",
@@ -7,16 +22,9 @@
       "Bash(python3:*)",
       "Bash(wc:*)",
       "Bash(grep:*)",
-      "Bash(python -c \"\nfrom modules.csv_writer import ProductResult, COLUMNS\nprint\\('COLUMNS:', COLUMNS\\)\nr = ProductResult\\(title_prefix='稼働品', abnormality_text='リューズ不動'\\)\nprint\\('to_row:', r.to_row\\(\\)\\)\nprint\\('列数一致:', len\\(COLUMNS\\) == len\\(r.to_row\\(\\)\\)\\)\n\")",
       "Bash(pip3 install:*)",
-      "Bash(source /Users/muranagakotaro/watch-ai-analyzer/.venv/bin/activate && pip list 2>/dev/null | grep -i docx)",
-      "Bash(source /Users/muranagakotaro/watch-ai-analyzer/.venv/bin/activate && python3 -c \"\nfrom docx import Document\ndoc = Document\\('/Users/muranagakotaro/watch-ai-analyzer/manual_web_ui.docx'\\)\nprint\\(f'段落数: {len\\(doc.paragraphs\\)}'\\)\nprint\\(f'テーブル数: {len\\(doc.tables\\)}'\\)\nprint\\(f'セクション数: {len\\(doc.sections\\)}'\\)\nprint\\(\\)\nfor i, p in enumerate\\(doc.paragraphs\\):\n    if p.text.strip\\(\\):\n        style = p.style.name if p.style else ''\n        prefix = '  ' if 'Heading' not in style else ''\n        print\\(f'{prefix}[{style}] {p.text[:80]}'\\)\n\" 2>&1)",
       "Bash(ls:*)",
-      "Bash(find /Users/muranagakotaro/watch-ai-analyzer -type f -name README* -o -name *.md -o -name manual*)",
-      "Bash(python -c \"import py_compile; py_compile.compile\\(''modules/category_mapper.py'', doraise=True\\); print\\(''category_mapper.py OK''\\)\")",
-      "Bash(python -c \"import py_compile; py_compile.compile\\(''modules/title_generator.py'', doraise=True\\); print\\(''title_generator.py OK''\\)\")",
-      "Bash(python -c \"import py_compile; py_compile.compile\\(''app.py'', doraise=True\\); print\\(''app.py OK''\\)\")",
-      "Bash(python -c \"import py_compile; py_compile.compile\\(''main.py'', doraise=True\\); print\\(''main.py OK''\\)\")"
+      "Skill(update-config)"
     ]
   }
 }
