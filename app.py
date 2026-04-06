@@ -5,7 +5,7 @@ Watch AI Auto-Analysis System - Web Interface
 
 使い方:
   python app.py
-  ブラウザで http://localhost:5000 を開く
+  ブラウザで http://localhost:8080 を開く
 """
 
 import json
