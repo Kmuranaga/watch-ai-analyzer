@@ -15,6 +15,8 @@ from modules.normalizer import (
     normalize_water_resistance,
     normalize_case_shape,
     normalize_gender,
+    normalize_hand_count,
+    normalize_model_number,
     normalize_all,
 )
 
@@ -248,6 +250,90 @@ class TestNormalizeGender:
         assert normalize_gender("") == ""
 
 
+class TestNormalizeHandCount:
+    """針数正規化（③ 表記ゆれ吸収）"""
+
+    def test_arabic(self):
+        assert normalize_hand_count("2針") == "2針"
+
+    def test_kanji(self):
+        assert normalize_hand_count("二針") == "2針"
+
+    def test_with_space(self):
+        assert normalize_hand_count("3 針") == "3針"
+
+    def test_hon(self):
+        assert normalize_hand_count("3本") == "3針"
+
+    def test_digital_english(self):
+        assert normalize_hand_count("digital") == "デジタル"
+
+    def test_digital_japanese(self):
+        assert normalize_hand_count("デジタル表示") == "デジタル"
+
+    def test_chronograph(self):
+        assert normalize_hand_count("クロノグラフ") == "クロノグラフ"
+
+    def test_chronograph_english(self):
+        assert normalize_hand_count("Chronograph") == "クロノグラフ"
+
+    def test_empty(self):
+        assert normalize_hand_count("") == ""
+
+
+class TestNormalizeModelNumber:
+    """型番正規化（① 3類型 + 基本正規化）"""
+
+    def test_basic_uppercase_strip(self):
+        """基本正規化: 前後空白除去・大文字化"""
+        assert normalize_model_number("  sarx055  ") == "SARX055"
+
+    def test_fullwidth(self):
+        """全角→半角"""
+        assert normalize_model_number("ＧＡ－１００") == "GA-100"
+
+    def test_hyphen_spaces(self):
+        """ハイフン前後の空白除去"""
+        assert normalize_model_number("GA - 100") == "GA-100"
+
+    def test_a_module_prefix_removed(self):
+        """(a) 先頭モジュール番号 5081- を除去"""
+        assert normalize_model_number("5081-GA-100CF") == "GA-100CF"
+
+    def test_a_module_prefix_3digit(self):
+        assert normalize_model_number("596-EQB-501") == "EQB-501"
+
+    def test_b_module_only_numeric(self):
+        """(b) 数字だけ（英字なし）は型番不明として空"""
+        assert normalize_model_number("5196") == ""
+        assert normalize_model_number("1647") == ""
+
+    def test_b_module_only_with_hyphen(self):
+        """数字とハイフンだけも英字を含まないため空"""
+        assert normalize_model_number("5081-100") == ""
+
+    def test_c_function_word_removed(self):
+        """(c) 機能語の除去"""
+        assert normalize_model_number("SARX055 AUTOMATIC") == "SARX055"
+
+    def test_c_multiple_function_words(self):
+        assert normalize_model_number("GA-100 QUARTZ CHRONOGRAPH") == "GA-100"
+
+    def test_c_diamond_removed(self):
+        assert normalize_model_number("ABC-123 DIAMOND") == "ABC-123"
+
+    def test_empty(self):
+        assert normalize_model_number("") == ""
+
+    def test_only_function_word_becomes_empty(self):
+        """機能語のみなら空になる"""
+        assert normalize_model_number("AUTOMATIC") == ""
+
+    def test_normal_model_passthrough(self):
+        """通常の型番はそのまま"""
+        assert normalize_model_number("EQB-501XDB-2A") == "EQB-501XDB-2A"
+
+
 class TestNormalizeAll:
     """normalize_all 統合テスト"""
 
@@ -261,6 +347,9 @@ class TestNormalizeAll:
             "model_number": "  SARX055  ",
             "case_shape": "Round",
             "gender": "Mens",
+            "body_color": " シルバー ",
+            "dial_color": "ブラック",
+            "hand_count": "二針",
         }
         result = normalize_all(data)
         assert result["brand_en"] == "SEIKO"
@@ -271,6 +360,19 @@ class TestNormalizeAll:
         assert result["model_number"] == "SARX055"
         assert result["case_shape"] == "ラウンド"
         assert result["gender"] == "メンズ"
+        assert result["body_color"] == "シルバー"
+        assert result["dial_color"] == "ブラック"
+        assert result["hand_count"] == "2針"
+
+    def test_model_number_module_prefix_in_normalize_all(self):
+        """normalize_all 経由で型番のモジュール番号が除去される（①(a)）"""
+        result = normalize_all({"brand_en": "CASIO", "model_number": "5081-GA-100CF"})
+        assert result["model_number"] == "GA-100CF"
+
+    def test_model_number_module_only_emptied(self):
+        """normalize_all 経由で数字のみ型番が空になる（①(b)）"""
+        result = normalize_all({"brand_en": "CASIO", "model_number": "5196"})
+        assert result["model_number"] == ""
 
     def test_empty_fields_not_processed(self):
         """空フィールドは処理されない（キーが存在しても空なら正規化スキップ）"""

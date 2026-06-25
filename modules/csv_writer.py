@@ -26,6 +26,7 @@ COLUMNS = [
     "素材",
     "防水",
     "ムーブメント",
+    "本体色",
     "文字盤色",
     "針数",
     "ケース形状",
@@ -50,6 +51,7 @@ class ProductResult:
     material: str = ""                # 素材
     water_resistance: str = ""        # 防水
     movement_type: str = ""           # ムーブメント
+    body_color: str = ""              # 本体色（ケース・バンドの色）
     dial_color: str = ""              # 文字盤色
     hand_count: str = ""              # 針数
     case_shape: str = ""              # ケース形状
@@ -73,6 +75,7 @@ class ProductResult:
             self.material,
             self.water_resistance,
             self.movement_type,
+            self.body_color,
             self.dial_color,
             self.hand_count,
             self.case_shape,
@@ -166,7 +169,7 @@ def write_excel(results: list[ProductResult], output_path: Path) -> None:
                     cell.fill = warning_fill
 
     # 列幅の自動調整
-    column_widths = [14, 14, 50, 50, 16, 14, 18, 14, 16, 12, 10, 14, 10, 8, 14, 20, 30, 20]
+    column_widths = [14, 14, 50, 50, 16, 14, 18, 14, 16, 12, 10, 14, 10, 10, 8, 14, 20, 30, 20]
     for col_idx, width in enumerate(column_widths, 1):
         ws.column_dimensions[chr(64 + col_idx) if col_idx <= 26 else ""].width = width
 

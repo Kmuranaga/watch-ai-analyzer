@@ -34,9 +34,23 @@ def normalize_all(data: dict) -> dict:
     if result.get("water_resistance"):
         result["water_resistance"] = normalize_water_resistance(result["water_resistance"])
 
-    # 型番正規化
+    # 型番正規化（モジュール番号・機能語の除去含む）
     if result.get("model_number"):
-        result["model_number"] = normalize_text(result["model_number"])
+        result["model_number"] = normalize_model_number(
+            result["model_number"], result.get("brand_en", "")
+        )
+
+    # 本体色正規化（軽い正規化のみ。色名はそのまま通す）
+    if result.get("body_color"):
+        result["body_color"] = normalize_text(result["body_color"])
+
+    # 文字盤色正規化（軽い正規化のみ）
+    if result.get("dial_color"):
+        result["dial_color"] = normalize_text(result["dial_color"])
+
+    # 針数正規化（表記ゆれ吸収）
+    if result.get("hand_count"):
+        result["hand_count"] = normalize_hand_count(result["hand_count"])
 
     # ケース形状正規化
     if result.get("case_shape"):
@@ -326,3 +340,112 @@ def normalize_case_shape(shape: str) -> str:
 
     logger.debug(f"ケース形状の変換なし: {shape}")
     return shape.strip()
+
+
+# === 針数の漢数字→算用数字テーブル ===
+_KANJI_NUM_MAP = {"一": "1", "二": "2", "三": "3", "四": "4", "五": "5", "六": "6"}
+
+
+def normalize_hand_count(hand_count: str) -> str:
+    """
+    針数の表記ゆれを吸収する。
+    "2針"/"二針"/"2 針"/"2本" → "2針"、"digital"/"デジタル表示" → "デジタル"、
+    クロノグラフ系 → "クロノグラフ" に統一する。
+    マッチしない場合は基本正規化した文字列をそのまま返す。
+    """
+    if not hand_count:
+        return ""
+
+    normalized = normalize_text(hand_count)
+
+    # クロノグラフ判定（針数表記より優先）
+    if "クロノ" in normalized or "chrono" in normalized.lower():
+        return "クロノグラフ"
+
+    # デジタル判定
+    if "デジタル" in normalized or "digital" in normalized.lower():
+        return "デジタル"
+
+    # 漢数字を算用数字へ変換してから判定
+    converted = normalized
+    for kanji, num in _KANJI_NUM_MAP.items():
+        converted = converted.replace(kanji, num)
+
+    # "N針"/"N本"（間に空白があっても許容）→ "N針"
+    match = re.search(r"(\d+)\s*(?:針|本)", converted)
+    if match:
+        return f"{match.group(1)}針"
+
+    logger.debug(f"針数の変換なし: {hand_count}")
+    return normalized
+
+
+# === 型番から除去する機能語・仕様語（顧客分析で判明した3類型のうち(c)） ===
+# 大文字単独トークンとして出現したものを除去する
+MODEL_NUMBER_FUNCTION_WORDS = {
+    "AUTOMATIC", "AUTO", "QUARTZ", "CHRONOGRAPH", "CHRONO",
+    "TOOL", "DIAMOND", "DIAMONDS", "ANALOG", "DIGITAL",
+    "WATER", "RESIST", "RESISTANT", "STAINLESS", "STEEL",
+    "JAPAN", "MOVT", "MOVEMENT", "DIAL", "CASE", "BACK",
+    "MENS", "LADIES",
+}
+
+# 先頭のモジュール番号パターン（例 CASIO G-SHOCK の "5081-GA-100CF" の "5081-"）
+_MODULE_PREFIX_RE = re.compile(r"^\d{3,4}-")
+
+
+def normalize_model_number(model_number: str, brand_en: str = "") -> str:
+    """
+    AIが読み取った型番を正規化する。顧客分析で判明した3類型を吸収する。
+
+    (a) モジュール番号混在（例 "5081-GA-100CF"）
+        → 先頭の "^\\d{3,4}-" を除去し "GA-100CF" を採用
+    (b) モジュール番号のみ（数字だけ・英字を含まない。例 "5196", "1647"）
+        → 型番不明として空文字を返す（マスタ照合・出力から除外）
+    (c) 機能語混在（AUTOMATIC, QUARTZ 等の仕様・機能語）
+        → 型番欄から除去
+
+    基本正規化（大文字化・前後空白除去・全角半角統一・ハイフン前後空白除去）も行う。
+
+    Args:
+        model_number: AI解析の型番文字列
+        brand_en: ブランド英字名（現状は未使用。将来のあいまい補正用に受け取る）
+
+    Returns:
+        正規化後の型番（不明な場合は空文字）
+    """
+    if not model_number:
+        return ""
+
+    # 基本正規化: 全角半角統一・前後空白除去・大文字化
+    text = normalize_text(model_number).upper()
+
+    # ハイフン前後の空白を除去（"GA - 100" → "GA-100"）
+    text = re.sub(r"\s*-\s*", "-", text)
+
+    if not text:
+        return ""
+
+    # (c) 機能語の除去（空白区切りトークン単位）
+    tokens = [t for t in text.split() if t and t not in MODEL_NUMBER_FUNCTION_WORDS]
+    text = " ".join(tokens).strip()
+
+    if not text:
+        return ""
+
+    # (a) 先頭モジュール番号の除去（例 "5081-GA-100CF" → "GA-100CF"）
+    #     ただし数字とハイフンだけの文字列（モジュール番号のみ）は除去しない
+    if _MODULE_PREFIX_RE.match(text) and re.search(r"[A-Z]", text):
+        text = _MODULE_PREFIX_RE.sub("", text, count=1)
+
+    # (b) 英字を含まない＝モジュール番号のみ → 型番不明として空に
+    if not re.search(r"[A-Z]", text):
+        logger.debug(f"型番はモジュール番号のみと判断し除外: {model_number}")
+        return ""
+
+    return text
+
+
+# TODO: マスタにブランド＋型番が存在しない場合の「ごく近い既知型番」へのあいまい補正
+#       （difflib等・高類似度かつブランド一致必須）は誤上書きリスクが高いため未実装。
+#       現状は「正規化＋完全一致」までに留める。

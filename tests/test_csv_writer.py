@@ -37,6 +37,17 @@ class TestProductResult:
         assert row[4] == "SEIKO"  # ブランド英字
         assert row[-1] == "正常"  # ステータス
 
+    def test_body_color_column(self):
+        """本体色が文字盤色の直前の列に出力される（②）"""
+        assert "本体色" in COLUMNS
+        assert COLUMNS.index("本体色") == COLUMNS.index("文字盤色") - 1
+        r = ProductResult(body_color="シルバー", dial_color="ブラック")
+        row = r.to_row()
+        body_idx = COLUMNS.index("本体色")
+        dial_idx = COLUMNS.index("文字盤色")
+        assert row[body_idx] == "シルバー"
+        assert row[dial_idx] == "ブラック"
+
     def test_to_row_order_matches_columns(self):
         """to_row の順序が COLUMNS 定義と対応している"""
         r = ProductResult(
