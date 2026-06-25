@@ -322,6 +322,10 @@ class TestNormalizeModelNumber:
     def test_c_diamond_removed(self):
         assert normalize_model_number("ABC-123 DIAMOND") == "ABC-123"
 
+    def test_c_function_word_hyphen_joined(self):
+        """(c) ハイフンで結合した機能語も除去（顧客実例 AUTOMATIC-UNI5901）"""
+        assert normalize_model_number("AUTOMATIC-UNI5901", "CITIZEN") == "UNI5901"
+
     def test_empty(self):
         assert normalize_model_number("") == ""
 

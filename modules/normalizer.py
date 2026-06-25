@@ -426,9 +426,17 @@ def normalize_model_number(model_number: str, brand_en: str = "") -> str:
     if not text:
         return ""
 
-    # (c) 機能語の除去（空白区切りトークン単位）
-    tokens = [t for t in text.split() if t and t not in MODEL_NUMBER_FUNCTION_WORDS]
-    text = " ".join(tokens).strip()
+    # (c) 機能語の除去（空白・ハイフン区切りのセグメント単位）
+    #     例 "GA-100 QUARTZ" → "GA-100"、"AUTOMATIC-UNI5901" → "UNI5901"
+    #     （機能語はハイフンで型番本体と結合しているケースがあるため、
+    #       空白トークンをさらにハイフンで分割して判定する）
+    cleaned_tokens = []
+    for token in text.split():
+        parts = [p for p in token.split("-")
+                 if p and p not in MODEL_NUMBER_FUNCTION_WORDS]
+        if parts:
+            cleaned_tokens.append("-".join(parts))
+    text = " ".join(cleaned_tokens).strip()
 
     if not text:
         return ""
