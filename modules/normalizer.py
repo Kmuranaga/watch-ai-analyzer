@@ -96,6 +96,7 @@ def normalize_brand(brand: str) -> str:
 MOVEMENT_MAKERS = {
     "CITIZEN", "MIYOTA", "SEIKO", "SII", "TMI", "HATTORI",
     "ORIENT", "EPSON", "RONDA", "ETA", "ISA", "JAPAN",
+    "STP",  # Swiss Technology Production（ETA系の汎用ムーブメント製造元）
 }
 
 
@@ -103,19 +104,20 @@ def reconcile_brand(front_brand: str, back_brand: str, front_conf=None):
     """
     正面（文字盤）ブランドと裏蓋刻印ブランドを整合し、採用ブランドと採用元を返す。
 
-    判定順（front=製品ブランド優先、back=補完/整合）:
+    判定順（裏蓋刻印ブランドを整合の基準にする）:
       1. fb,bb がともにあり fb≠bb で bb が製造元（MOVEMENT_MAKERS）
-         → fb（裏蓋は製造元なので文字盤を採用。例: RONSON/CITIZEN製造）
-      2. fb,bb がともにあり fb≠bb で bb が製造元でなく、
-         front_conf が数値で 0.6 未満 → bb（表が低確信で実ブランドの裏蓋と矛盾）
-      3. fb がある → fb（文字盤優先）
+         → fb（裏蓋は製造元名であって製品ブランドではない。例: RONSON/CITIZEN製造、SEIKO/STP）
+      2. fb,bb がともにあり fb≠bb で bb が製造元でない実ブランド
+         → bb（裏蓋の実ブランド刻印を採用。正面は高確信でも誤読しうる。例: ELGINがTAG HEUERと誤読）
+      3. fb がある → fb（裏蓋が空 or fb==bb）
       4. fb が空で bb がある → bb（表が判読不可→裏蓋で補完）
       5. どちらも空 → ""
 
     Args:
         front_brand: 正面ブランド（生文字列可）
         back_brand: 裏蓋刻印ブランド（生文字列可）
-        front_conf: 正面ブランドの confidence（数値 or None）
+        front_conf: 正面ブランドの confidence。現ロジックでは判定に使用しないが、
+                    後方互換のため引数は受け付ける（製造元ガードで誤採用を防ぐ方式に変更）。
 
     Returns:
         (brand, source): brand は正規化済みブランド、
@@ -125,16 +127,14 @@ def reconcile_brand(front_brand: str, back_brand: str, front_conf=None):
     bb = normalize_brand(back_brand) if back_brand else ""
 
     if fb and bb and fb != bb:
-        # 1. 裏蓋が製造元名 → 文字盤を採用
+        # 1. 裏蓋が製造元名 → 文字盤を採用（RONSON/CITIZEN, SEIKO/STP 等）
         if bb in MOVEMENT_MAKERS:
             return fb, "front"
-        # 2. 表が低確信かつ裏蓋が実ブランド → 裏蓋を採用
-        if isinstance(front_conf, (int, float)) and front_conf < 0.6:
-            return bb, "back"
-        # 3. それ以外は文字盤優先
-        return fb, "front"
+        # 2. 裏蓋が製造元でない実ブランド → 裏蓋を採用
+        #    （正面は高確信でも誤読しうるため、製造元でない刻印ブランドを優先）
+        return bb, "back"
 
-    # 3. 文字盤優先（fb==bb のケースもここで fb を返す）
+    # 3. 文字盤優先（裏蓋が空、または fb==bb のケース）
     if fb:
         return fb, "front"
 

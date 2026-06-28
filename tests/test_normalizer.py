@@ -428,9 +428,19 @@ class TestReconcileBrand:
         assert source == "back"
 
     def test_front_high_conf_back_real_brand(self):
-        """front高確信 + 別ブランド(back, 製造元でない) → front（文字盤優先）"""
-        brand, source = reconcile_brand("OMEGA", "ELGIN", front_conf=0.95)
-        assert brand == "OMEGA"
+        """front高確信 + 別の実ブランド(back, 製造元でない) → back（裏蓋の実ブランドを優先）
+
+        正面が高確信でも誤読しうる（例: ELGINをTAG HEUERと誤読）ため、
+        製造元名でない裏蓋刻印ブランドは confidence に依らず採用する。
+        """
+        brand, source = reconcile_brand("TAG HEUER", "ELGIN", front_conf=0.98)
+        assert brand == "ELGIN"
+        assert source == "back"
+
+    def test_high_conf_front_back_is_movement_maker(self):
+        """front高確信 + 裏蓋が製造元(STP) → front を維持（誤採用を防ぐ製造元ガード）"""
+        brand, source = reconcile_brand("SEIKO", "STP", front_conf=0.99)
+        assert brand == "SEIKO"
         assert source == "front"
 
     def test_both_empty(self):
@@ -506,4 +516,36 @@ class TestNormalizeAllReconcile:
         }
         result = normalize_all(merged)
         assert result["brand_en"] == "ELGIN"
+        assert "back_brand_en" not in result
+
+    def test_high_conf_front_overridden_by_back_real_brand(self):
+        """front高確信誤読(TAG HEUER) + 実ブランド裏蓋(ELGIN) → 裏蓋ELGINを採用
+
+        実データ(2916676): 正面をTAG HEUER 0.98で誤読、裏蓋ELGINで是正されるケース。
+        """
+        merged = {
+            "brand_en": "TAG HEUER",
+            "back_brand_en": "ELGIN",
+            "back_series_en": "MOST VALUABLE PLAYER",
+            "confidence": {"brand": 0.98},
+        }
+        result = normalize_all(merged)
+        assert result["brand_en"] == "ELGIN"
+        assert result["series_en"] == "MOST VALUABLE PLAYER"
+        assert "back_brand_en" not in result
+
+    def test_high_conf_front_kept_when_back_is_maker(self):
+        """front高確信(SEIKO) + 製造元裏蓋(STP) → SEIKOを維持（退行防止）
+
+        実データ(2924283): 裏蓋STPはムーブメント製造元。製品ブランドSEIKOを維持する。
+        """
+        merged = {
+            "brand_en": "SEIKO",
+            "series_en": "CRONOS",
+            "back_brand_en": "STP",
+            "confidence": {"brand": 0.99},
+        }
+        result = normalize_all(merged)
+        assert result["brand_en"] == "SEIKO"
+        assert result["series_en"] == "CRONOS"
         assert "back_brand_en" not in result
