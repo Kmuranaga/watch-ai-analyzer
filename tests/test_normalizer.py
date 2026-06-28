@@ -305,13 +305,22 @@ class TestNormalizeModelNumber:
         assert normalize_model_number("596-EQB-501") == "EQB-501"
 
     def test_b_module_only_numeric(self):
-        """(b) 数字だけ（英字なし）は型番不明として空"""
+        """(b) ハイフンなしの短い数字（≤4桁、モジュール番号）は型番不明として空"""
         assert normalize_model_number("5196") == ""
         assert normalize_model_number("1647") == ""
+        assert normalize_model_number("596") == ""
 
-    def test_b_module_only_with_hyphen(self):
-        """数字とハイフンだけも英字を含まないため空"""
-        assert normalize_model_number("5081-100") == ""
+    def test_b_hyphenated_numeric_ref_kept(self):
+        """(b) ハイフン区切りの数字型番（SEIKO/CITIZEN等のヴィンテージ参照番号）は保持"""
+        assert normalize_model_number("6119-8030") == "6119-8030"
+        assert normalize_model_number("2706-0170") == "2706-0170"
+        assert normalize_model_number("11-4210") == "11-4210"
+        assert normalize_model_number("4-520190", "CITIZEN") == "4-520190"
+
+    def test_b_long_numeric_ref_kept(self):
+        """(b) 5桁以上の数字型番（例 SEIKO 29014, 283110）は保持"""
+        assert normalize_model_number("29014") == "29014"
+        assert normalize_model_number("283110") == "283110"
 
     def test_c_function_word_removed(self):
         """(c) 機能語の除去"""
@@ -375,9 +384,14 @@ class TestNormalizeAll:
         assert result["model_number"] == "GA-100CF"
 
     def test_model_number_module_only_emptied(self):
-        """normalize_all 経由で数字のみ型番が空になる（①(b)）"""
+        """normalize_all 経由で短い数字のみ型番（モジュール番号）が空になる（①(b)）"""
         result = normalize_all({"brand_en": "CASIO", "model_number": "5196"})
         assert result["model_number"] == ""
+
+    def test_model_number_numeric_ref_preserved(self):
+        """normalize_all 経由で数字型番（SEIKOヴィンテージ参照番号）が保持される（①(b)）"""
+        result = normalize_all({"brand_en": "SEIKO", "model_number": "6119-8030"})
+        assert result["model_number"] == "6119-8030"
 
     def test_empty_fields_not_processed(self):
         """空フィールドは処理されない（キーが存在しても空なら正規化スキップ）"""

@@ -498,8 +498,10 @@ def normalize_model_number(model_number: str, brand_en: str = "") -> str:
 
     (a) モジュール番号混在（例 "5081-GA-100CF"）
         → 先頭の "^\\d{3,4}-" を除去し "GA-100CF" を採用
-    (b) モジュール番号のみ（数字だけ・英字を含まない。例 "5196", "1647"）
+    (b) モジュール番号のみ（ハイフンなしの短い数字・≤4桁。例 "5196", "1647"）
         → 型番不明として空文字を返す（マスタ照合・出力から除外）
+        ※ ハイフン区切りの数字や5桁以上の数字は、和製ヴィンテージ等の
+           正当な数字型番（例 SEIKO "6119-8030", "29014"）として保持する
     (c) 機能語混在（AUTOMATIC, QUARTZ 等の仕様・機能語）
         → 型番欄から除去
 
@@ -544,10 +546,17 @@ def normalize_model_number(model_number: str, brand_en: str = "") -> str:
     if _MODULE_PREFIX_RE.match(text) and re.search(r"[A-Z]", text):
         text = _MODULE_PREFIX_RE.sub("", text, count=1)
 
-    # (b) 英字を含まない＝モジュール番号のみ → 型番不明として空に
+    # (b) 英字を含まない型番の扱い
+    #     - ハイフンのない短い数字のみ（≤4桁）→ モジュール/キャリバー番号とみなし空に
+    #       （例 CASIO "5196", "1647"）
+    #     - ハイフン区切りの数字、または5桁以上の数字は、和製ヴィンテージ等の
+    #       正当な数字型番（例 SEIKO "6119-8030", "29014", CITIZEN "4-520190"）
+    #       として保持する
     if not re.search(r"[A-Z]", text):
-        logger.debug(f"型番はモジュール番号のみと判断し除外: {model_number}")
-        return ""
+        if re.fullmatch(r"\d{1,4}", text):
+            logger.debug(f"型番はモジュール番号のみと判断し除外: {model_number}")
+            return ""
+        # ハイフン区切り・5桁以上の数字型番は保持
 
     return text
 
