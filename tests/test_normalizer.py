@@ -18,6 +18,7 @@ from modules.normalizer import (
     normalize_hand_count,
     normalize_model_number,
     normalize_all,
+    reconcile_brand,
 )
 
 
@@ -397,3 +398,112 @@ class TestNormalizeAll:
         result = normalize_all(data)
         assert data["brand_en"] == "seiko"
         assert result["brand_en"] == "SEIKO"
+
+
+class TestReconcileBrand:
+    """裏蓋ブランド整合 reconcile_brand 単体テスト"""
+
+    def test_front_product_back_movement_maker(self):
+        """RONSON(front) + CITIZEN(back, 製造元) → RONSON"""
+        brand, source = reconcile_brand("RONSON", "CITIZEN")
+        assert brand == "RONSON"
+        assert source == "front"
+
+    def test_front_empty_back_real_brand(self):
+        """front空 + ELGIN(back) → ELGIN（仕様1: 表判読不可の補完）"""
+        brand, source = reconcile_brand("", "ELGIN")
+        assert brand == "ELGIN"
+        assert source == "back"
+
+    def test_front_equals_back(self):
+        """front=back（一致）→ そのブランド"""
+        brand, source = reconcile_brand("SEIKO", "seiko")
+        assert brand == "SEIKO"
+        assert source == "front"
+
+    def test_front_low_conf_back_real_brand(self):
+        """front低確信(0.4) + 別の実ブランド(back) → back"""
+        brand, source = reconcile_brand("OMEGA", "ELGIN", front_conf=0.4)
+        assert brand == "ELGIN"
+        assert source == "back"
+
+    def test_front_high_conf_back_real_brand(self):
+        """front高確信 + 別ブランド(back, 製造元でない) → front（文字盤優先）"""
+        brand, source = reconcile_brand("OMEGA", "ELGIN", front_conf=0.95)
+        assert brand == "OMEGA"
+        assert source == "front"
+
+    def test_both_empty(self):
+        """両方空 → ''"""
+        brand, source = reconcile_brand("", "")
+        assert brand == ""
+        assert source == ""
+
+    def test_low_conf_but_back_is_movement_maker(self):
+        """front低確信でも裏蓋が製造元なら front を維持（RONSON対策優先）"""
+        brand, source = reconcile_brand("RONSON", "CITIZEN", front_conf=0.4)
+        assert brand == "RONSON"
+        assert source == "front"
+
+    def test_front_only(self):
+        """裏蓋空 → 文字盤優先"""
+        brand, source = reconcile_brand("CASIO", "")
+        assert brand == "CASIO"
+        assert source == "front"
+
+
+class TestNormalizeAllReconcile:
+    """normalize_all でのブランド整合 + 一時キー削除 統合テスト"""
+
+    def test_front_brand_kept_when_back_is_maker(self):
+        """RONSON(front) + CITIZEN(back製造元) → brand_en=RONSON、back_*削除"""
+        merged = {
+            "brand_en": "RONSON",
+            "brand_kana": "ロンソン",
+            "series_en": "CLASSIC",
+            "series_kana": "クラシック",
+            "back_brand_en": "CITIZEN",
+            "back_brand_kana": "シチズン",
+            "back_series_en": "",
+            "back_series_kana": "",
+            "confidence": {"brand": 0.9},
+        }
+        result = normalize_all(merged)
+        assert result["brand_en"] == "RONSON"
+        assert result["series_en"] == "CLASSIC"
+        assert result["brand_kana"] == "ロンソン"
+        # 一時キーは出力に残らない
+        for key in ("back_brand_en", "back_brand_kana",
+                    "back_series_en", "back_series_kana", "back_confidence"):
+            assert key not in result
+
+    def test_back_brand_supplements_when_front_empty(self):
+        """front空 + ELGIN(back) → brand_en=ELGIN、kana/series も back を採用"""
+        merged = {
+            "brand_en": "",
+            "brand_kana": "",
+            "series_en": "",
+            "series_kana": "",
+            "back_brand_en": "ELGIN",
+            "back_brand_kana": "エルジン",
+            "back_series_en": "DELUXE",
+            "back_series_kana": "デラックス",
+            "confidence": {},
+        }
+        result = normalize_all(merged)
+        assert result["brand_en"] == "ELGIN"
+        assert result["brand_kana"] == "エルジン"
+        assert result["series_en"] == "DELUXE"
+        assert result["series_kana"] == "デラックス"
+        assert "back_brand_en" not in result
+
+    def test_low_conf_front_overridden_by_back(self):
+        """front低確信 + 実ブランド裏蓋 → 裏蓋採用"""
+        merged = {
+            "brand_en": "OMEGA",
+            "back_brand_en": "ELGIN",
+            "confidence": {"brand": 0.4},
+        }
+        result = normalize_all(merged)
+        assert result["brand_en"] == "ELGIN"
+        assert "back_brand_en" not in result

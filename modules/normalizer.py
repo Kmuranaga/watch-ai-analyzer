@@ -14,6 +14,10 @@ def normalize_all(data: dict) -> dict:
     """全フィールドに正規化処理を適用する"""
     result = data.copy()
 
+    # 正面ブランドと裏蓋刻印ブランドの整合
+    # （文字盤=製品ブランド優先、裏蓋=補完/整合。判定詳細は reconcile_brand を参照）
+    _reconcile_brand_fields(result)
+
     # ブランド名正規化
     if result.get("brand_en"):
         result["brand_en"] = normalize_brand(result["brand_en"])
@@ -84,6 +88,100 @@ def normalize_brand(brand: str) -> str:
     """ブランド名を大文字に統一"""
     brand = normalize_text(brand)
     return brand.upper()
+
+
+# === ムーブメント製造元名（製品ブランドではない）===
+# 裏蓋にはこれらの製造元名が刻印されることがあるが、製品ブランドとは限らない。
+# （正規化後の大文字表記で照合する）
+MOVEMENT_MAKERS = {
+    "CITIZEN", "MIYOTA", "SEIKO", "SII", "TMI", "HATTORI",
+    "ORIENT", "EPSON", "RONDA", "ETA", "ISA", "JAPAN",
+}
+
+
+def reconcile_brand(front_brand: str, back_brand: str, front_conf=None):
+    """
+    正面（文字盤）ブランドと裏蓋刻印ブランドを整合し、採用ブランドと採用元を返す。
+
+    判定順（front=製品ブランド優先、back=補完/整合）:
+      1. fb,bb がともにあり fb≠bb で bb が製造元（MOVEMENT_MAKERS）
+         → fb（裏蓋は製造元なので文字盤を採用。例: RONSON/CITIZEN製造）
+      2. fb,bb がともにあり fb≠bb で bb が製造元でなく、
+         front_conf が数値で 0.6 未満 → bb（表が低確信で実ブランドの裏蓋と矛盾）
+      3. fb がある → fb（文字盤優先）
+      4. fb が空で bb がある → bb（表が判読不可→裏蓋で補完）
+      5. どちらも空 → ""
+
+    Args:
+        front_brand: 正面ブランド（生文字列可）
+        back_brand: 裏蓋刻印ブランド（生文字列可）
+        front_conf: 正面ブランドの confidence（数値 or None）
+
+    Returns:
+        (brand, source): brand は正規化済みブランド、
+                         source は "front" / "back" / ""
+    """
+    fb = normalize_brand(front_brand) if front_brand else ""
+    bb = normalize_brand(back_brand) if back_brand else ""
+
+    if fb and bb and fb != bb:
+        # 1. 裏蓋が製造元名 → 文字盤を採用
+        if bb in MOVEMENT_MAKERS:
+            return fb, "front"
+        # 2. 表が低確信かつ裏蓋が実ブランド → 裏蓋を採用
+        if isinstance(front_conf, (int, float)) and front_conf < 0.6:
+            return bb, "back"
+        # 3. それ以外は文字盤優先
+        return fb, "front"
+
+    # 3. 文字盤優先（fb==bb のケースもここで fb を返す）
+    if fb:
+        return fb, "front"
+
+    # 4. 表が判読不可 → 裏蓋で補完
+    if bb:
+        return bb, "back"
+
+    # 5. どちらも空
+    return "", ""
+
+
+def _reconcile_brand_fields(result: dict) -> None:
+    """
+    normalize_all 内でブランド/シリーズの整合を行い、result を直接更新する。
+
+    - reconcile_brand で最終ブランドと採用元を決定し brand_en に設定。
+    - シリーズ・かなは採用元に合わせて front/back を採用（採用元が空なら他方で補完）。
+    - 裏蓋用の一時キー（back_*）は出力に残さないよう pop する。
+    """
+    front_brand = result.get("brand_en", "")
+    back_brand = result.get("back_brand_en", "")
+    front_conf = (result.get("confidence") or {}).get("brand")
+
+    final_brand, source = reconcile_brand(front_brand, back_brand, front_conf)
+    result["brand_en"] = final_brand
+
+    front_series = result.get("series_en", "")
+    back_series = result.get("back_series_en", "")
+    front_brand_kana = result.get("brand_kana", "")
+    back_brand_kana = result.get("back_brand_kana", "")
+    front_series_kana = result.get("series_kana", "")
+    back_series_kana = result.get("back_series_kana", "")
+
+    if source == "back":
+        result["series_en"] = back_series or front_series
+        result["brand_kana"] = back_brand_kana or front_brand_kana
+        result["series_kana"] = back_series_kana or front_series_kana
+    elif source == "front":
+        result["series_en"] = front_series or back_series
+        result["brand_kana"] = front_brand_kana or back_brand_kana
+        result["series_kana"] = front_series_kana or back_series_kana
+    # source == "" の場合は既存値（基本空）を維持
+
+    # 裏蓋用の一時キーは出力に残さない
+    for key in ("back_brand_en", "back_brand_kana",
+                "back_series_en", "back_series_kana", "back_confidence"):
+        result.pop(key, None)
 
 
 # === 素材名変換テーブル ===

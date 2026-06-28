@@ -285,13 +285,20 @@ def analyze_front(image_path: Path, diagonal_image_path: Path | None = None) -> 
 
 def analyze_back_cover(image_path: Path) -> dict:
     """
-    裏蓋画像を解析し、型番・素材・防水性能を取得する。
+    裏蓋画像を解析し、型番・素材・防水性能・裏蓋刻印ブランドを取得する。
+
+    裏蓋ブランド/シリーズは front を上書きしないよう back_ 接頭辞の別キーで返す。
+    （正面・裏蓋の整合判定は normalizer.reconcile_brand / normalize_all で行う）
 
     Returns:
         {
             "model_number": str,
             "material": str,
             "water_resistance": str,
+            "back_brand_en": str,
+            "back_brand_kana": str,
+            "back_series_en": str,
+            "back_series_kana": str,
             "confidence": dict,
         }
     """
@@ -303,6 +310,10 @@ def analyze_back_cover(image_path: Path) -> dict:
         "model_number": "",
         "material": "",
         "water_resistance": "",
+        "back_brand_en": "",
+        "back_brand_kana": "",
+        "back_series_en": "",
+        "back_series_kana": "",
         "confidence": {},
     }
     for key, default in defaults.items():
