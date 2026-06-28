@@ -182,3 +182,18 @@ class TestRateLimitCallback:
             _notify_rate_limit("test_event", {})
         finally:
             _rate_limit_callbacks.remove(bad_cb)
+
+
+class TestGenerationConfig:
+    """生成設定の回帰ガード"""
+
+    def test_max_tokens_large_enough_for_thinking(self):
+        """gemini-2.5-pro は思考トークンも max_output_tokens を消費するため、
+        2048 のような小さい値だと出力が空/JSON切断になり解析が間欠失敗する。
+        十分な余裕（>=4096）を確保していることを保証する。
+        """
+        import config
+        assert config.AI_MAX_TOKENS >= 4096, (
+            "AI_MAX_TOKENS が小さすぎます。gemini-2.5-pro の思考トークンで"
+            "出力枠が枯渇し、裏蓋型番等の抽出が間欠的に失敗します。"
+        )
