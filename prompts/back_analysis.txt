@@ -44,7 +44,7 @@
   "back_brand_kana": "",
   "back_series_en": "",
   "back_series_kana": "",
-  "confidence": {
+  "back_confidence": {
     "model_number": 0.90,
     "material": 0.85,
     "water_resistance": 0.95,

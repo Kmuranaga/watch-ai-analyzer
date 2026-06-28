@@ -299,7 +299,7 @@ def analyze_back_cover(image_path: Path) -> dict:
             "back_brand_kana": str,
             "back_series_en": str,
             "back_series_kana": str,
-            "confidence": dict,
+            "back_confidence": dict,
         }
     """
     logger.info(f"裏蓋画像解析: {image_path}")
@@ -314,7 +314,7 @@ def analyze_back_cover(image_path: Path) -> dict:
         "back_brand_kana": "",
         "back_series_en": "",
         "back_series_kana": "",
-        "confidence": {},
+        "back_confidence": {},
     }
     for key, default in defaults.items():
         if key not in result:
