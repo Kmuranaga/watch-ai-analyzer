@@ -17,6 +17,7 @@ from modules.normalizer import (
     normalize_gender,
     normalize_hand_count,
     normalize_model_number,
+    normalize_series,
     normalize_all,
     reconcile_brand,
 )
@@ -346,6 +347,37 @@ class TestNormalizeModelNumber:
     def test_normal_model_passthrough(self):
         """通常の型番はそのまま"""
         assert normalize_model_number("EQB-501XDB-2A") == "EQB-501XDB-2A"
+
+
+class TestNormalizeSeries:
+    """シリーズ名正規化（SEIKO略称展開）"""
+
+    def test_lm_expands_to_lord_matic(self):
+        """SEIKO の LM → LORD MATIC（2924305 のケース）"""
+        assert normalize_series("LM", "SEIKO") == "LORD MATIC"
+
+    def test_lm_lowercase_input(self):
+        assert normalize_series("lm", "seiko") == "LORD MATIC"
+
+    def test_ks_gs_expand_for_seiko(self):
+        assert normalize_series("KS", "SEIKO") == "KING SEIKO"
+        assert normalize_series("GS", "SEIKO") == "GRAND SEIKO"
+
+    def test_no_expand_for_non_seiko(self):
+        """SEIKO 以外では略称を展開しない（誤展開防止）"""
+        assert normalize_series("LM", "CITIZEN") == "LM"
+        assert normalize_series("GS", "") == "GS"
+
+    def test_non_alias_series_passthrough(self):
+        """略称表に無いシリーズは大文字化のみ"""
+        assert normalize_series("presage", "SEIKO") == "PRESAGE"
+        assert normalize_series("CRONOS", "SEIKO") == "CRONOS"
+
+    def test_full_normalization_expands_seiko_lm(self):
+        """normalize_all 経由でも LM が展開される（ブランド整合後の brand_en を使用）"""
+        data = {"brand_en": "SEIKO", "series_en": "LM", "series_kana": "ロードマチック"}
+        result = normalize_all(data)
+        assert result["series_en"] == "LORD MATIC"
 
 
 class TestNormalizeAll:
