@@ -37,11 +37,13 @@ from config import DEFAULT_INPUT_DIR, DEFAULT_OUTPUT_DIR, GEMINI_API_KEY, MAX_CO
 from modules.folder_scanner import scan_folder, ProductImages
 from modules.ai_analyzer import (
     analyze_front, analyze_back_cover, analyze_comment,
+    analyze_hand_count_cropped,
     create_batch_requests, submit_batch, poll_batch,
     retrieve_batch_results, parse_batch_results_for_product,
+    parse_hand_count_result_for_product,
     register_rate_limit_callback,
 )
-from modules.normalizer import normalize_all
+from modules.normalizer import normalize_all, should_run_hand_count_pass, apply_hand_count_override
 from modules.category_mapper import CategoryMapper
 from modules.title_generator import generate_title
 from modules.csv_writer import ProductResult, write_csv, write_excel
@@ -171,8 +173,22 @@ def process_single_product(
                 logger.error(f"{label}画像AI解析エラー: {e}")
                 errors.append(f"{label}AI解析エラー: {e}")
 
+    # --- Step 4.5: 針数専用パス（アナログのみ）。正面解析の過剰検出(2針→3針)を是正 ---
+    hand_count_data = {}
+    if product.front_image and front_data and should_run_hand_count_pass(front_data.get("hand_count", "")):
+        try:
+            hand_count_data = analyze_hand_count_cropped(product.front_image)
+            new_hc = hand_count_data.get("hand_count", "")
+            old_hc = front_data.get("hand_count", "")
+            if new_hc and new_hc != old_hc:
+                logger.info(f"[{product.product_id}] 針数を専用パスで上書き: {old_hc} → {new_hc}")
+        except Exception as e:
+            logger.error(f"針数専用解析エラー: {e}")
+            errors.append(f"針数専用解析エラー: {e}")
+
     # --- Step 5: データ正規化 ---
     merged_data = {**front_data, **back_data}
+    merged_data = apply_hand_count_override(merged_data, hand_count_data)
     normalized = normalize_all(merged_data)
 
     # 結果格納
@@ -397,14 +413,18 @@ def main():
             front_data, back_data, comment_data = parse_batch_results_for_product(
                 product.product_id, batch_results,
             )
+            hand_count_data = parse_hand_count_result_for_product(
+                product.product_id, batch_results,
+            )
 
             if not front_data and product.front_image:
                 errors.append("正面AI解析: 結果なし")
             if not back_data and product.back_cover_image:
                 errors.append("裏蓋AI解析: 結果なし")
 
-            # データ正規化
+            # データ正規化（針数専用パスのクロップ結果で hand_count を上書き）
             merged_data = {**front_data, **back_data}
+            merged_data = apply_hand_count_override(merged_data, hand_count_data)
             normalized = normalize_all(merged_data)
 
             result.brand_en = normalized.get("brand_en", "")
