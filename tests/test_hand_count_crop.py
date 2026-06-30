@@ -69,9 +69,15 @@ def test_analyze_hand_count_cropped_takes_fewest(monkeypatch):
     seq = iter([{"hand_count": "3針"}, {"hand_count": "2針"}])
     monkeypatch.setattr(ai, "_call_api_bytes",
                         lambda prompt, b, mime_type="image/jpeg", label="": next(seq))
-    out = ai.analyze_hand_count_cropped(_P("front.jpg"))
+    # フラクションは明示し、デフォルト個数に依存しないようにする
+    out = ai.analyze_hand_count_cropped(_P("front.jpg"), fracs=(0.55, 0.50))
     assert out["hand_count"] == "2針"
     assert len(out["per_crop"]) == 2
+
+
+def test_default_crop_fracs_has_multiple():
+    # 過剰検出の揺れに対応するため複数倍率を使う
+    assert len(ai.HAND_COUNT_CROP_FRACS) >= 3
 
 
 # === ai_analyzer: batch ===
