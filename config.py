@@ -30,7 +30,11 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
 # === AIモデル設定 ===
 AI_MODEL = "gemini-2.5-pro"
-AI_MAX_TOKENS = 2048
+# gemini-2.5-pro は思考(thinking)トークンも max_output_tokens を消費する。
+# 2048 では思考が枠を食い尽くし、出力が空(text=None)や途中切断したJSONになって
+# 解析が間欠的に失敗する（裏蓋型番の抽出漏れの主因）。出力JSON自体は数百トークンと
+# 小さいため、思考分の余裕を確保するために十分大きな値にする。
+AI_MAX_TOKENS = 8192
 AI_TEMPERATURE = 0.0  # 解析精度重視のため低温設定
 
 # === パス設定 ===

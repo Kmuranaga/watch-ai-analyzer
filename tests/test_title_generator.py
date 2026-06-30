@@ -43,6 +43,27 @@ class TestGenerateTitle:
         assert title == ""
 
 
+class TestBodyColorOrder:
+    """仕様②: 本体色は文字盤色の直前（本体色→文字盤色の順）に配置される"""
+
+    def test_body_color_before_dial_color(self):
+        title = generate_title(
+            brand_en="SEIKO",
+            body_color="シルバー",
+            dial_color="ブラック",
+        )
+        assert title == "SEIKO シルバー ブラック"
+
+    def test_body_color_only(self):
+        title = generate_title(brand_en="SEIKO", body_color="ゴールド")
+        assert title == "SEIKO ゴールド"
+
+    def test_dial_color_only(self):
+        """本体色なしでも従来通り文字盤色のみ出力"""
+        title = generate_title(brand_en="SEIKO", dial_color="ブルー")
+        assert title == "SEIKO ブルー"
+
+
 class TestGenderAdditionalWordOrder:
     """仕様: 性別は additional_word の直前に配置される"""
 
@@ -81,6 +102,7 @@ class TestGenderAdditionalWordOrder:
             series_en="G-SHOCK",
             series_kana="ジーショック",
             model_number="GA-100",
+            body_color="シルバー",
             dial_color="ブラック",
             hand_count="3針",
             case_shape="ラウンド",
@@ -92,6 +114,6 @@ class TestGenderAdditionalWordOrder:
         )
         expected = (
             "【中古】 CASIO カシオ G-SHOCK ジーショック GA-100 "
-            "ブラック 3針 ラウンド ステンレス 20気圧防水 クォーツ メンズ 腕時計"
+            "シルバー ブラック 3針 ラウンド ステンレス 20気圧防水 クォーツ メンズ 腕時計"
         )
         assert title == expected

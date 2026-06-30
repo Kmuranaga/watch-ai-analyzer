@@ -6,6 +6,15 @@
 1. **model_number** - 裏蓋刻印から型番を読み取る（ハイフン含む。例: 5N21-6583）
 2. **material** - ケース素材を判定
 3. **water_resistance** - 防水表記を読み取る
+4. **back_brand_en** - 裏蓋刻印から読み取れるブランド名（英字）。読み取れなければ空文字
+5. **back_brand_kana** - 上記ブランドのカタカナ表記。不明なら空文字
+6. **back_series_en** - 裏蓋刻印から読み取れるシリーズ名（英字）。読み取れなければ空文字
+7. **back_series_kana** - 上記シリーズのカタカナ表記。不明なら空文字
+
+## ブランド・シリーズ読み取りの注意
+- 裏蓋にはムーブメント製造元名（CITIZEN, MIYOTA, SEIKO, ORIENT, RONDA, ETA 等）が刻印されることがあるが、それは「製造元」であり製品ブランドとは限らない。
+- 製造元名か製品ブランド名かの判定はシステム側で行うため、刻印から読み取れたブランド名はそのまま back_brand_en に返してよい。
+- 読み取れない項目は空文字 "" を返すこと。
 
 ## 素材判定ルール
 - "STAINLESS STEEL", "ST.STEEL", "SS" → ステンレス
@@ -31,10 +40,15 @@
   "model_number": "5N21-6583",
   "material": "ステンレス",
   "water_resistance": "10BAR",
-  "confidence": {
+  "back_brand_en": "",
+  "back_brand_kana": "",
+  "back_series_en": "",
+  "back_series_kana": "",
+  "back_confidence": {
     "model_number": 0.90,
     "material": 0.85,
-    "water_resistance": 0.95
+    "water_resistance": 0.95,
+    "back_brand_en": 0.80
   }
 }
 ```

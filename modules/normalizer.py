@@ -14,6 +14,10 @@ def normalize_all(data: dict) -> dict:
     """全フィールドに正規化処理を適用する"""
     result = data.copy()
 
+    # 正面ブランドと裏蓋刻印ブランドの整合
+    # （文字盤=製品ブランド優先、裏蓋=補完/整合。判定詳細は reconcile_brand を参照）
+    _reconcile_brand_fields(result)
+
     # ブランド名正規化
     if result.get("brand_en"):
         result["brand_en"] = normalize_brand(result["brand_en"])
@@ -34,9 +38,23 @@ def normalize_all(data: dict) -> dict:
     if result.get("water_resistance"):
         result["water_resistance"] = normalize_water_resistance(result["water_resistance"])
 
-    # 型番正規化
+    # 型番正規化（モジュール番号・機能語の除去含む）
     if result.get("model_number"):
-        result["model_number"] = normalize_text(result["model_number"])
+        result["model_number"] = normalize_model_number(
+            result["model_number"], result.get("brand_en", "")
+        )
+
+    # 本体色正規化（軽い正規化のみ。色名はそのまま通す）
+    if result.get("body_color"):
+        result["body_color"] = normalize_text(result["body_color"])
+
+    # 文字盤色正規化（軽い正規化のみ）
+    if result.get("dial_color"):
+        result["dial_color"] = normalize_text(result["dial_color"])
+
+    # 針数正規化（表記ゆれ吸収）
+    if result.get("hand_count"):
+        result["hand_count"] = normalize_hand_count(result["hand_count"])
 
     # ケース形状正規化
     if result.get("case_shape"):
@@ -70,6 +88,100 @@ def normalize_brand(brand: str) -> str:
     """ブランド名を大文字に統一"""
     brand = normalize_text(brand)
     return brand.upper()
+
+
+# === ムーブメント製造元名（製品ブランドではない）===
+# 裏蓋にはこれらの製造元名が刻印されることがあるが、製品ブランドとは限らない。
+# （正規化後の大文字表記で照合する）
+MOVEMENT_MAKERS = {
+    "CITIZEN", "MIYOTA", "SEIKO", "SII", "TMI", "HATTORI",
+    "ORIENT", "EPSON", "RONDA", "ETA", "ISA", "JAPAN",
+    "STP",  # Swiss Technology Production（ETA系の汎用ムーブメント製造元）
+}
+
+
+def reconcile_brand(front_brand: str, back_brand: str, front_conf=None):
+    """
+    正面（文字盤）ブランドと裏蓋刻印ブランドを整合し、採用ブランドと採用元を返す。
+
+    判定順（裏蓋刻印ブランドを整合の基準にする）:
+      1. fb,bb がともにあり fb≠bb で bb が製造元（MOVEMENT_MAKERS）
+         → fb（裏蓋は製造元名であって製品ブランドではない。例: RONSON/CITIZEN製造、SEIKO/STP）
+      2. fb,bb がともにあり fb≠bb で bb が製造元でない実ブランド
+         → bb（裏蓋の実ブランド刻印を採用。正面は高確信でも誤読しうる。例: ELGINがTAG HEUERと誤読）
+      3. fb がある → fb（裏蓋が空 or fb==bb）
+      4. fb が空で bb がある → bb（表が判読不可→裏蓋で補完）
+      5. どちらも空 → ""
+
+    Args:
+        front_brand: 正面ブランド（生文字列可）
+        back_brand: 裏蓋刻印ブランド（生文字列可）
+        front_conf: 正面ブランドの confidence。現ロジックでは判定に使用しないが、
+                    後方互換のため引数は受け付ける（製造元ガードで誤採用を防ぐ方式に変更）。
+
+    Returns:
+        (brand, source): brand は正規化済みブランド、
+                         source は "front" / "back" / ""
+    """
+    fb = normalize_brand(front_brand) if front_brand else ""
+    bb = normalize_brand(back_brand) if back_brand else ""
+
+    if fb and bb and fb != bb:
+        # 1. 裏蓋が製造元名 → 文字盤を採用（RONSON/CITIZEN, SEIKO/STP 等）
+        if bb in MOVEMENT_MAKERS:
+            return fb, "front"
+        # 2. 裏蓋が製造元でない実ブランド → 裏蓋を採用
+        #    （正面は高確信でも誤読しうるため、製造元でない刻印ブランドを優先）
+        return bb, "back"
+
+    # 3. 文字盤優先（裏蓋が空、または fb==bb のケース）
+    if fb:
+        return fb, "front"
+
+    # 4. 表が判読不可 → 裏蓋で補完
+    if bb:
+        return bb, "back"
+
+    # 5. どちらも空
+    return "", ""
+
+
+def _reconcile_brand_fields(result: dict) -> None:
+    """
+    normalize_all 内でブランド/シリーズの整合を行い、result を直接更新する。
+
+    - reconcile_brand で最終ブランドと採用元を決定し brand_en に設定。
+    - シリーズ・かなは採用元に合わせて front/back を採用（採用元が空なら他方で補完）。
+    - 裏蓋用の一時キー（back_*）は出力に残さないよう pop する。
+    """
+    front_brand = result.get("brand_en", "")
+    back_brand = result.get("back_brand_en", "")
+    front_conf = (result.get("confidence") or {}).get("brand")
+
+    final_brand, source = reconcile_brand(front_brand, back_brand, front_conf)
+    result["brand_en"] = final_brand
+
+    front_series = result.get("series_en", "")
+    back_series = result.get("back_series_en", "")
+    front_brand_kana = result.get("brand_kana", "")
+    back_brand_kana = result.get("back_brand_kana", "")
+    front_series_kana = result.get("series_kana", "")
+    back_series_kana = result.get("back_series_kana", "")
+
+    if source == "back":
+        result["series_en"] = back_series or front_series
+        result["brand_kana"] = back_brand_kana or front_brand_kana
+        result["series_kana"] = back_series_kana or front_series_kana
+    elif source == "front":
+        result["series_en"] = front_series or back_series
+        result["brand_kana"] = front_brand_kana or back_brand_kana
+        result["series_kana"] = front_series_kana or back_series_kana
+    # source == "" の場合は既存値（基本空）を維持
+
+    # 裏蓋用の一時キーは出力に残さない
+    for key in ("back_brand_en", "back_brand_kana",
+                "back_series_en", "back_series_kana", "back_confidence"):
+        result.pop(key, None)
 
 
 # === 素材名変換テーブル ===
@@ -326,3 +438,129 @@ def normalize_case_shape(shape: str) -> str:
 
     logger.debug(f"ケース形状の変換なし: {shape}")
     return shape.strip()
+
+
+# === 針数の漢数字→算用数字テーブル ===
+_KANJI_NUM_MAP = {"一": "1", "二": "2", "三": "3", "四": "4", "五": "5", "六": "6"}
+
+
+def normalize_hand_count(hand_count: str) -> str:
+    """
+    針数の表記ゆれを吸収する。
+    "2針"/"二針"/"2 針"/"2本" → "2針"、"digital"/"デジタル表示" → "デジタル"、
+    クロノグラフ系 → "クロノグラフ" に統一する。
+    マッチしない場合は基本正規化した文字列をそのまま返す。
+    """
+    if not hand_count:
+        return ""
+
+    normalized = normalize_text(hand_count)
+
+    # クロノグラフ判定（針数表記より優先）
+    if "クロノ" in normalized or "chrono" in normalized.lower():
+        return "クロノグラフ"
+
+    # デジタル判定
+    if "デジタル" in normalized or "digital" in normalized.lower():
+        return "デジタル"
+
+    # 漢数字を算用数字へ変換してから判定
+    converted = normalized
+    for kanji, num in _KANJI_NUM_MAP.items():
+        converted = converted.replace(kanji, num)
+
+    # "N針"/"N本"（間に空白があっても許容）→ "N針"
+    match = re.search(r"(\d+)\s*(?:針|本)", converted)
+    if match:
+        return f"{match.group(1)}針"
+
+    logger.debug(f"針数の変換なし: {hand_count}")
+    return normalized
+
+
+# === 型番から除去する機能語・仕様語（顧客分析で判明した3類型のうち(c)） ===
+# 大文字単独トークンとして出現したものを除去する
+MODEL_NUMBER_FUNCTION_WORDS = {
+    "AUTOMATIC", "AUTO", "QUARTZ", "CHRONOGRAPH", "CHRONO",
+    "TOOL", "DIAMOND", "DIAMONDS", "ANALOG", "DIGITAL",
+    "WATER", "RESIST", "RESISTANT", "STAINLESS", "STEEL",
+    "JAPAN", "MOVT", "MOVEMENT", "DIAL", "CASE", "BACK",
+    "MENS", "LADIES",
+}
+
+# 先頭のモジュール番号パターン（例 CASIO G-SHOCK の "5081-GA-100CF" の "5081-"）
+_MODULE_PREFIX_RE = re.compile(r"^\d{3,4}-")
+
+
+def normalize_model_number(model_number: str, brand_en: str = "") -> str:
+    """
+    AIが読み取った型番を正規化する。顧客分析で判明した3類型を吸収する。
+
+    (a) モジュール番号混在（例 "5081-GA-100CF"）
+        → 先頭の "^\\d{3,4}-" を除去し "GA-100CF" を採用
+    (b) モジュール番号のみ（ハイフンなしの短い数字・≤4桁。例 "5196", "1647"）
+        → 型番不明として空文字を返す（マスタ照合・出力から除外）
+        ※ ハイフン区切りの数字や5桁以上の数字は、和製ヴィンテージ等の
+           正当な数字型番（例 SEIKO "6119-8030", "29014"）として保持する
+    (c) 機能語混在（AUTOMATIC, QUARTZ 等の仕様・機能語）
+        → 型番欄から除去
+
+    基本正規化（大文字化・前後空白除去・全角半角統一・ハイフン前後空白除去）も行う。
+
+    Args:
+        model_number: AI解析の型番文字列
+        brand_en: ブランド英字名（現状は未使用。将来のあいまい補正用に受け取る）
+
+    Returns:
+        正規化後の型番（不明な場合は空文字）
+    """
+    if not model_number:
+        return ""
+
+    # 基本正規化: 全角半角統一・前後空白除去・大文字化
+    text = normalize_text(model_number).upper()
+
+    # ハイフン前後の空白を除去（"GA - 100" → "GA-100"）
+    text = re.sub(r"\s*-\s*", "-", text)
+
+    if not text:
+        return ""
+
+    # (c) 機能語の除去（空白・ハイフン区切りのセグメント単位）
+    #     例 "GA-100 QUARTZ" → "GA-100"、"AUTOMATIC-UNI5901" → "UNI5901"
+    #     （機能語はハイフンで型番本体と結合しているケースがあるため、
+    #       空白トークンをさらにハイフンで分割して判定する）
+    cleaned_tokens = []
+    for token in text.split():
+        parts = [p for p in token.split("-")
+                 if p and p not in MODEL_NUMBER_FUNCTION_WORDS]
+        if parts:
+            cleaned_tokens.append("-".join(parts))
+    text = " ".join(cleaned_tokens).strip()
+
+    if not text:
+        return ""
+
+    # (a) 先頭モジュール番号の除去（例 "5081-GA-100CF" → "GA-100CF"）
+    #     ただし数字とハイフンだけの文字列（モジュール番号のみ）は除去しない
+    if _MODULE_PREFIX_RE.match(text) and re.search(r"[A-Z]", text):
+        text = _MODULE_PREFIX_RE.sub("", text, count=1)
+
+    # (b) 英字を含まない型番の扱い
+    #     - ハイフンのない短い数字のみ（≤4桁）→ モジュール/キャリバー番号とみなし空に
+    #       （例 CASIO "5196", "1647"）
+    #     - ハイフン区切りの数字、または5桁以上の数字は、和製ヴィンテージ等の
+    #       正当な数字型番（例 SEIKO "6119-8030", "29014", CITIZEN "4-520190"）
+    #       として保持する
+    if not re.search(r"[A-Z]", text):
+        if re.fullmatch(r"\d{1,4}", text):
+            logger.debug(f"型番はモジュール番号のみと判断し除外: {model_number}")
+            return ""
+        # ハイフン区切り・5桁以上の数字型番は保持
+
+    return text
+
+
+# TODO: マスタにブランド＋型番が存在しない場合の「ごく近い既知型番」へのあいまい補正
+#       （difflib等・高類似度かつブランド一致必須）は誤上書きリスクが高いため未実装。
+#       現状は「正規化＋完全一致」までに留める。

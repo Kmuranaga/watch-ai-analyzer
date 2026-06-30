@@ -246,6 +246,7 @@ def analyze_front(image_path: Path, diagonal_image_path: Path | None = None) -> 
             "brand_kana": str,
             "series_en": str,
             "series_kana": str,
+            "body_color": str,
             "dial_color": str,
             "hand_count": str,
             "movement_type": str,
@@ -267,6 +268,7 @@ def analyze_front(image_path: Path, diagonal_image_path: Path | None = None) -> 
         "brand_kana": "",
         "series_en": "",
         "series_kana": "",
+        "body_color": "",
         "dial_color": "",
         "hand_count": "",
         "movement_type": "",
@@ -283,14 +285,21 @@ def analyze_front(image_path: Path, diagonal_image_path: Path | None = None) -> 
 
 def analyze_back_cover(image_path: Path) -> dict:
     """
-    裏蓋画像を解析し、型番・素材・防水性能を取得する。
+    裏蓋画像を解析し、型番・素材・防水性能・裏蓋刻印ブランドを取得する。
+
+    裏蓋ブランド/シリーズは front を上書きしないよう back_ 接頭辞の別キーで返す。
+    （正面・裏蓋の整合判定は normalizer.reconcile_brand / normalize_all で行う）
 
     Returns:
         {
             "model_number": str,
             "material": str,
             "water_resistance": str,
-            "confidence": dict,
+            "back_brand_en": str,
+            "back_brand_kana": str,
+            "back_series_en": str,
+            "back_series_kana": str,
+            "back_confidence": dict,
         }
     """
     logger.info(f"裏蓋画像解析: {image_path}")
@@ -301,7 +310,11 @@ def analyze_back_cover(image_path: Path) -> dict:
         "model_number": "",
         "material": "",
         "water_resistance": "",
-        "confidence": {},
+        "back_brand_en": "",
+        "back_brand_kana": "",
+        "back_series_en": "",
+        "back_series_kana": "",
+        "back_confidence": {},
     }
     for key, default in defaults.items():
         if key not in result:
