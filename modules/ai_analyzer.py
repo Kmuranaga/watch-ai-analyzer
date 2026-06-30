@@ -115,7 +115,7 @@ def _set_rate_limit_cooldown(delay: float):
 
 def _call_api(prompt: str, image_path: Path, extra_images: list[Path] | None = None) -> dict:
     """
-    Gemini Vision APIを呼び出し、JSONレスポンスを取得する。
+    Gemini Vision APIを呼び出し、JSONレスポンスを取得する（画像パス入力）。
     リトライ付き（指数バックオフ + グローバルレートリミッター）。
 
     Args:
@@ -123,19 +123,11 @@ def _call_api(prompt: str, image_path: Path, extra_images: list[Path] | None = N
         image_path: メイン画像パス
         extra_images: 追加画像パスのリスト（任意）
     """
-    if genai is None:
-        raise ImportError(
-            "google-genai パッケージが未インストールです。\n"
-            "pip install google-genai でインストールしてください。"
-        )
-
     if not GEMINI_API_KEY:
         raise ValueError(
             "GEMINI_API_KEY が設定されていません。\n"
             "環境変数に設定してください: export GEMINI_API_KEY=your-api-key"
         )
-
-    client = _get_client()
 
     # メイン画像
     image_data, media_type = _encode_image(image_path)
@@ -156,6 +148,40 @@ def _call_api(prompt: str, image_path: Path, extra_images: list[Path] | None = N
                     mime_type=extra_media_type,
                 )
             )
+
+    return _call_api_core(prompt, image_parts, label=image_path.name)
+
+
+def _call_api_bytes(prompt: str, image_bytes: bytes, mime_type: str = "image/jpeg",
+                    label: str = "cropped") -> dict:
+    """
+    Gemini Vision APIを呼び出す（画像バイト列入力）。クロップ画像など、
+    一時ファイルを作らずメモリ上の画像を送るために使う。
+    """
+    if not GEMINI_API_KEY:
+        raise ValueError(
+            "GEMINI_API_KEY が設定されていません。\n"
+            "環境変数に設定してください: export GEMINI_API_KEY=your-api-key"
+        )
+    image_parts = [types.Part.from_bytes(data=image_bytes, mime_type=mime_type)]
+    return _call_api_core(prompt, image_parts, label=label)
+
+
+def _call_api_core(prompt: str, image_parts: list, label: str) -> dict:
+    """画像パーツ列とプロンプトから JSON レスポンスを取得する共通リトライ処理。"""
+    if genai is None:
+        raise ImportError(
+            "google-genai パッケージが未インストールです。\n"
+            "pip install google-genai でインストールしてください。"
+        )
+
+    if not GEMINI_API_KEY:
+        raise ValueError(
+            "GEMINI_API_KEY が設定されていません。\n"
+            "環境変数に設定してください: export GEMINI_API_KEY=your-api-key"
+        )
+
+    client = _get_client()
 
     config = types.GenerateContentConfig(
         max_output_tokens=AI_MAX_TOKENS,
@@ -187,17 +213,17 @@ def _call_api(prompt: str, image_path: Path, extra_images: list[Path] | None = N
                 logger.error(f"APIキーエラー: {e}")
                 _notify_rate_limit("api_key_error", {
                     "error": error_str,
-                    "image_path": str(image_path.name),
+                    "image_path": str(label),
                 })
                 return {}
             if "429" in error_str or "ResourceExhausted" in error_str:
                 delay = min(API_RETRY_BASE_DELAY * (2 ** (attempt - 1)), API_RETRY_MAX_DELAY)
-                logger.warning(f"レートリミット到達。{delay}秒後にリトライ (試行 {attempt}/{API_MAX_RETRIES}) - {image_path.name}")
+                logger.warning(f"レートリミット到達。{delay}秒後にリトライ (試行 {attempt}/{API_MAX_RETRIES}) - {label}")
                 _notify_rate_limit("rate_limit_hit", {
                     "attempt": attempt,
                     "max_retries": API_MAX_RETRIES,
                     "delay": delay,
-                    "image_path": str(image_path.name),
+                    "image_path": str(label),
                 })
                 _set_rate_limit_cooldown(delay)
                 time.sleep(delay)
@@ -212,9 +238,9 @@ def _call_api(prompt: str, image_path: Path, extra_images: list[Path] | None = N
                 logger.warning(f"APIエラー: {e}。{delay}秒後にリトライ (試行 {attempt}/{API_MAX_RETRIES})")
                 time.sleep(delay)
 
-    logger.error(f"API呼び出し失敗（リトライ上限到達）: {image_path}")
+    logger.error(f"API呼び出し失敗（リトライ上限到達）: {label}")
     _notify_rate_limit("rate_limit_retry_exhausted", {
-        "image_path": str(image_path.name),
+        "image_path": str(label),
     })
     return {}
 
@@ -366,6 +392,38 @@ def analyze_comment(image_paths: list[Path]) -> dict:
     }
 
 
+# 針数専用パスのクロップ倍率（短辺比）。0.55/0.50 の「少ない本数」採用で、
+# クリーンな過剰検出3件を回帰なしで是正できた実測に基づく。
+HAND_COUNT_CROP_FRACS = (0.55, 0.50)
+
+
+def analyze_hand_count_cropped(front_image_path: Path,
+                               fracs: tuple = HAND_COUNT_CROP_FRACS) -> dict:
+    """文字盤を複数倍率でクロップ＋拡大し針数を判定、最も少ない本数を採用する。
+
+    正面解析の過剰検出（2針→3針）を抑制するための独立パス。各クロップに対し
+    正面解析プロンプトで針数を取得し、fewest_hand_count で最少本数を返す。
+
+    Returns:
+        {"hand_count": str, "per_crop": {frac: hand_count}}
+    """
+    from modules.image_preprocess import crop_dial_to_bytes
+    from modules.normalizer import normalize_hand_count, fewest_hand_count
+
+    prompt = _load_prompt("front_analysis.txt")
+    per_crop = {}
+    counts = []
+    for frac in fracs:
+        image_bytes = crop_dial_to_bytes(front_image_path, frac)
+        result = _call_api_bytes(prompt, image_bytes,
+                                 label=f"{front_image_path.name}#crop{frac}")
+        hc = normalize_hand_count(result.get("hand_count", ""))
+        per_crop[str(frac)] = hc
+        counts.append(hc)
+
+    return {"hand_count": fewest_hand_count(counts), "per_crop": per_crop}
+
+
 # === Batch API対応 ===
 
 def _build_batch_request(custom_id: str, prompt: str, image_path: Path, extra_images: list[Path] | None = None) -> dict:
@@ -398,6 +456,28 @@ def _build_batch_request(custom_id: str, prompt: str, image_path: Path, extra_im
     }
 
 
+def _build_batch_request_bytes(custom_id: str, prompt: str, image_bytes: bytes,
+                               mime_type: str = "image/jpeg") -> dict:
+    """1つのBatch APIリクエストを画像バイト列から組み立てる（クロップ画像用）。"""
+    parts = [
+        types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+        types.Part.from_text(text=prompt),
+    ]
+    return {
+        "metadata": {"custom_id": custom_id},
+        "contents": [
+            types.Content(
+                role="user",
+                parts=parts,
+            )
+        ],
+        "config": types.GenerateContentConfig(
+            max_output_tokens=AI_MAX_TOKENS,
+            temperature=AI_TEMPERATURE,
+        ),
+    }
+
+
 def create_batch_requests(products: list) -> list[dict]:
     """
     Batch API用のリクエストリストを生成する。
@@ -408,7 +488,10 @@ def create_batch_requests(products: list) -> list[dict]:
       - "{product_id}__back"     → 裏蓋画像解析
       - "{product_id}__comment1" → コメントシール1
       - "{product_id}__comment2" → コメントシール2
+      - "{product_id}__hand_c0/c1" → 針数専用パス（クロップ別）
     """
+    from modules.image_preprocess import crop_dial_to_bytes
+
     requests = []
     front_prompt = _load_prompt("front_analysis.txt")
     back_prompt = _load_prompt("back_analysis.txt")
@@ -420,6 +503,10 @@ def create_batch_requests(products: list) -> list[dict]:
         if product.front_image:
             extra = [product.diagonal_image] if product.diagonal_image else None
             requests.append(_build_batch_request(f"{pid}__front", front_prompt, product.front_image, extra_images=extra))
+            # 針数専用パス: 文字盤を複数倍率でクロップし「少ない本数」採用（過剰検出抑制）
+            for i, frac in enumerate(HAND_COUNT_CROP_FRACS):
+                crop_bytes = crop_dial_to_bytes(product.front_image, frac)
+                requests.append(_build_batch_request_bytes(f"{pid}__hand_c{i}", front_prompt, crop_bytes))
 
         if product.back_cover_image:
             requests.append(_build_batch_request(f"{pid}__back", back_prompt, product.back_cover_image))
@@ -592,3 +679,30 @@ def parse_batch_results_for_product(
     }
 
     return front_data, back_data, comment_data
+
+
+def parse_hand_count_result_for_product(
+    product_id: str,
+    batch_results: dict[str, dict],
+) -> dict:
+    """結果辞書から特定商品の針数専用パス（クロップ別）の結果をまとめ、
+    最も少ない本数を採用して返す（無ければ空dict）。
+
+    Returns:
+        {"hand_count": str, "per_crop": {key: hand_count}} または {}
+    """
+    from modules.normalizer import normalize_hand_count, fewest_hand_count
+
+    per_crop = {}
+    counts = []
+    for i in range(len(HAND_COUNT_CROP_FRACS)):
+        key = f"{product_id}__hand_c{i}"
+        cdata = batch_results.get(key)
+        if cdata:
+            hc = normalize_hand_count(cdata.get("hand_count", ""))
+            per_crop[key] = hc
+            counts.append(hc)
+
+    if not counts:
+        return {}
+    return {"hand_count": fewest_hand_count(counts), "per_crop": per_crop}

@@ -584,6 +584,52 @@ def normalize_model_number(model_number: str, brand_en: str = "") -> str:
     return text
 
 
+# === 針数専用パス（過剰検出抑制）用ロジック ===
+# 針の本数のランク（少ない方を採用＝過剰検出を抑える）
+_HAND_RANK = {"2針": 2, "3針": 3, "クロノグラフ": 4}
+
+
+def fewest_hand_count(values: list) -> str:
+    """複数の針数判定から「最も少ない本数」を採用する（過剰検出抑制）。
+
+    既知ランク(2針 < 3針 < クロノグラフ)の中で最小を返す。既知ランクが
+    1つも無い場合は最初の非空値、無ければ空文字を返す。
+    """
+    known = [v for v in values if v in _HAND_RANK]
+    if known:
+        return min(known, key=lambda v: _HAND_RANK[v])
+    for v in values:
+        if v:
+            return v
+    return ""
+
+
+def should_run_hand_count_pass(front_hand_count: str) -> bool:
+    """正面解析の針数がデジタル以外（=アナログ）なら専用針数パスを走らせる。
+
+    confidence は判別に使えない（過剰検出が全件 conf=1.0 だった実測）ため、
+    アナログは一律で専用パスを通す。デジタル（針なし）のみスキップ。空（不明）は実行する。
+    """
+    hc = normalize_hand_count(front_hand_count) if front_hand_count else ""
+    return hc != "デジタル"
+
+
+def apply_hand_count_override(merged_data: dict, hand_count_data: dict) -> dict:
+    """専用針数パスの結果で merged_data の hand_count を上書きした新しい dict を返す。
+
+    - デジタル（針なし）は上書きしない。
+    - hand_count_data が空／針数なしのときは既存値を維持（安全側）。
+    - 入力 dict は破壊しない。
+    """
+    result = dict(merged_data)
+    if normalize_hand_count(result.get("hand_count", "")) == "デジタル":
+        return result
+    new_hc = (hand_count_data or {}).get("hand_count", "")
+    if new_hc:
+        result["hand_count"] = new_hc
+    return result
+
+
 # TODO: マスタにブランド＋型番が存在しない場合の「ごく近い既知型番」へのあいまい補正
 #       （difflib等・高類似度かつブランド一致必須）は誤上書きリスクが高いため未実装。
 #       現状は「正規化＋完全一致」までに留める。
