@@ -22,9 +22,9 @@ def normalize_all(data: dict) -> dict:
     if result.get("brand_en"):
         result["brand_en"] = normalize_brand(result["brand_en"])
 
-    # シリーズ名正規化
+    # シリーズ名正規化（大文字化＋SEIKO略称の展開。展開はブランド整合後の brand_en を使う）
     if result.get("series_en"):
-        result["series_en"] = normalize_text(result["series_en"]).upper()
+        result["series_en"] = normalize_series(result["series_en"], result.get("brand_en", ""))
 
     # 素材名正規化
     if result.get("material"):
@@ -88,6 +88,29 @@ def normalize_brand(brand: str) -> str:
     """ブランド名を大文字に統一"""
     brand = normalize_text(brand)
     return brand.upper()
+
+
+# === SEIKO ヴィンテージのシリーズ略称 → 正式名 ===
+# 文字盤には略称（LM 等）のみ刻印されることがあり、AI もそのまま略称で出力する。
+# （AI 側は series_kana で「ロードマチック」等を出せているが series_en は略称のまま）
+# これらは SEIKO 固有の標準的な略称なので、誤展開を防ぐためブランド=SEIKO のときのみ適用する。
+SEIKO_SERIES_ALIAS = {
+    "LM": "LORD MATIC",
+    "KS": "KING SEIKO",
+    "GS": "GRAND SEIKO",
+}
+
+
+def normalize_series(series: str, brand: str = "") -> str:
+    """シリーズ名を正規化（大文字化＋SEIKO略称の展開）。
+
+    SEIKO の標準的なシリーズ略称（LM/KS/GS）のみ正式名へ展開する。
+    他ブランドで同綴りが別義になる誤展開を避けるため、ブランド=SEIKO に限定する。
+    """
+    s = normalize_text(series).upper()
+    if normalize_brand(brand) == "SEIKO":
+        return SEIKO_SERIES_ALIAS.get(s, s)
+    return s
 
 
 # === ムーブメント製造元名（製品ブランドではない）===
