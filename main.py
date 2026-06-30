@@ -415,6 +415,7 @@ def main():
             result.material = normalized.get("material", "")
             result.water_resistance = normalized.get("water_resistance", "")
             result.movement_type = normalized.get("movement_type", "")
+            result.body_color = normalized.get("body_color", "")
             result.dial_color = normalized.get("dial_color", "")
             result.hand_count = normalized.get("hand_count", "")
             result.case_shape = normalized.get("case_shape", "")
@@ -481,6 +482,7 @@ def main():
                 series_en=result.series_en,
                 series_kana=result.series_kana,
                 model_number=result.model_number,
+                body_color=result.body_color,
                 dial_color=result.dial_color,
                 hand_count=result.hand_count,
                 case_shape=result.case_shape,
