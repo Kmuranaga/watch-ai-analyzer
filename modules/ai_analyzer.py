@@ -123,13 +123,7 @@ def _call_api(prompt: str, image_path: Path, extra_images: list[Path] | None = N
         image_path: メイン画像パス
         extra_images: 追加画像パスのリスト（任意）
     """
-    if not GEMINI_API_KEY:
-        raise ValueError(
-            "GEMINI_API_KEY が設定されていません。\n"
-            "環境変数に設定してください: export GEMINI_API_KEY=your-api-key"
-        )
-
-    # メイン画像
+    # メイン画像（APIキー/genai 未設定の検証は _call_api_core で行う）
     image_data, media_type = _encode_image(image_path)
     image_parts = [
         types.Part.from_bytes(
@@ -158,11 +152,6 @@ def _call_api_bytes(prompt: str, image_bytes: bytes, mime_type: str = "image/jpe
     Gemini Vision APIを呼び出す（画像バイト列入力）。クロップ画像など、
     一時ファイルを作らずメモリ上の画像を送るために使う。
     """
-    if not GEMINI_API_KEY:
-        raise ValueError(
-            "GEMINI_API_KEY が設定されていません。\n"
-            "環境変数に設定してください: export GEMINI_API_KEY=your-api-key"
-        )
     image_parts = [types.Part.from_bytes(data=image_bytes, mime_type=mime_type)]
     return _call_api_core(prompt, image_parts, label=label)
 
@@ -505,7 +494,9 @@ def create_batch_requests(products: list) -> list[dict]:
         if product.front_image:
             extra = [product.diagonal_image] if product.diagonal_image else None
             requests.append(_build_batch_request(f"{pid}__front", front_prompt, product.front_image, extra_images=extra))
-            # 針数専用パス: 文字盤を複数倍率でクロップし「少ない本数」採用（過剰検出抑制）
+            # 針数専用パス: 文字盤を複数倍率でクロップし「少ない本数」採用（過剰検出抑制）。
+            # Batchは送信前に正面結果を参照できないため、デジタル時計にもクロップ要求を出す
+            # （結果は apply_hand_count_override 側でデジタル判定され無視されるため正しさは保たれる）。
             for i, frac in enumerate(HAND_COUNT_CROP_FRACS):
                 crop_bytes = crop_dial_to_bytes(product.front_image, frac)
                 requests.append(_build_batch_request_bytes(f"{pid}__hand_c{i}", front_prompt, crop_bytes))

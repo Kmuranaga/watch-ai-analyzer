@@ -625,7 +625,9 @@ def apply_hand_count_override(merged_data: dict, hand_count_data: dict) -> dict:
     if normalize_hand_count(result.get("hand_count", "")) == "デジタル":
         return result
     new_hc = (hand_count_data or {}).get("hand_count", "")
-    if new_hc:
+    # 専用パスが返すのは針数(2針/3針/クロノ)のみを正とする。クロップに部分的なLCD等が
+    # 写って「デジタル」や不明値が返っても、アナログの hand_count を誤って上書きしない。
+    if new_hc in _HAND_RANK:
         result["hand_count"] = new_hc
     return result
 

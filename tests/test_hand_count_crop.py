@@ -62,6 +62,13 @@ def test_override_skips_digital_and_empty():
     assert apply_hand_count_override({"hand_count": "2針"}, {"hand_count": ""})["hand_count"] == "2針"
 
 
+def test_override_rejects_nonhand_result():
+    # クロップに部分LCD等が写り専用パスが「デジタル」を返しても、
+    # アナログ(3針)を誤って デジタル に下げない（既知の針数のみ採用）
+    assert apply_hand_count_override({"hand_count": "3針"}, {"hand_count": "デジタル"})["hand_count"] == "3針"
+    assert apply_hand_count_override({"hand_count": "3針"}, {"hand_count": "なし"})["hand_count"] == "3針"
+
+
 # === ai_analyzer: analyze_hand_count_cropped ===
 
 def test_analyze_hand_count_cropped_takes_fewest(monkeypatch):
