@@ -415,6 +415,31 @@ def analyze_hand_count_cropped(front_image_path: Path,
     return {"hand_count": fewest_hand_count(counts), "per_crop": per_crop}
 
 
+# 型番リカバリ設定（初回の裏蓋読みで型番が空だった時のみ発火）
+MODEL_RECOVERY_SCALE = 2     # 裏蓋を拡大する倍率
+MODEL_RECOVERY_SAMPLES = 3   # 拡大画像を読む回数（多数決）
+
+
+def recover_model_number_upscaled(back_image_path: Path,
+                                  k: int = MODEL_RECOVERY_SAMPLES,
+                                  scale: int = MODEL_RECOVERY_SCALE) -> str:
+    """裏蓋を拡大して k 回読み、型番の最頻非空値を返す。
+
+    初回の裏蓋解析で型番が空だった商品のリカバリ用。刻印は読めるのに単発だと空に
+    なるジッター（例: 2924286）を、拡大＋多数決で回収する。読めなければ空を返す。
+    """
+    from modules.image_preprocess import upscale_to_bytes
+    from modules.normalizer import normalize_model_number, majority_nonempty
+
+    prompt = _load_prompt("back_analysis.txt")
+    reads = []
+    for _ in range(k):
+        data = upscale_to_bytes(back_image_path, scale)
+        r = _call_api_bytes(prompt, data, label=f"{back_image_path.name}#up{scale}")
+        reads.append(normalize_model_number(r.get("model_number", "")))
+    return majority_nonempty(reads)
+
+
 # === Batch API対応 ===
 
 def _build_batch_request(custom_id: str, prompt: str, image_path: Path, extra_images: list[Path] | None = None) -> dict:
