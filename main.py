@@ -43,7 +43,10 @@ from modules.ai_analyzer import (
     parse_hand_count_result_for_product,
     register_rate_limit_callback,
 )
-from modules.normalizer import normalize_all, should_run_hand_count_pass, apply_hand_count_override
+from modules.normalizer import (
+    normalize_all, should_run_hand_count_pass, apply_hand_count_override,
+    stabilize_back_brand_override,
+)
 from modules.category_mapper import CategoryMapper
 from modules.title_generator import generate_title
 from modules.csv_writer import ProductResult, write_csv, write_excel
@@ -172,6 +175,25 @@ def process_single_product(
                 label = {"front": "正面", "back": "裏蓋", "comment": "コメント"}[task_type]
                 logger.error(f"{label}画像AI解析エラー: {e}")
                 errors.append(f"{label}AI解析エラー: {e}")
+
+    # --- Step 4.4: 裏蓋ブランド上書きの安定化 ---
+    # 安定して正しい正面を、裏蓋の一回ノイズ読みが上書きするのを防ぐ。
+    # 上書きが起きうるケースのみ裏蓋を再サンプルし、不安定なら裏蓋ブランドを破棄して正面を維持。
+    back_brand = back_data.get("back_brand_en", "")
+    if back_brand and product.back_cover_image:
+        try:
+            trust = stabilize_back_brand_override(
+                front_data.get("brand_en", ""), back_brand,
+                resample_fn=lambda: analyze_back_cover(product.back_cover_image).get("back_brand_en", ""),
+            )
+            if not trust:
+                logger.info(
+                    f"[{product.product_id}] 裏蓋ブランド '{back_brand}' は不安定のため不採用（正面を維持）"
+                )
+                for key in ("back_brand_en", "back_brand_kana", "back_series_en", "back_series_kana"):
+                    back_data[key] = ""
+        except Exception as e:
+            logger.error(f"裏蓋ブランド安定化エラー: {e}")
 
     # --- Step 4.5: 針数専用パス（アナログのみ）。正面解析の過剰検出(2針→3針)を是正 ---
     hand_count_data = {}

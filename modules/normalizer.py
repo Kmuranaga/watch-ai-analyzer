@@ -169,6 +169,42 @@ def reconcile_brand(front_brand: str, back_brand: str, front_conf=None):
     return "", ""
 
 
+def stabilize_back_brand_override(front_brand: str, back_brand: str,
+                                  resample_fn, k: int = 3) -> bool:
+    """裏蓋ブランドで正面を上書きしてよいか（裏蓋が安定しているか）を判定する。
+
+    背景: reconcile_brand は「正面≠裏蓋 かつ 裏蓋が非製造元ブランド」のとき裏蓋を採用する
+    （例: ELGINがTAG HEUERと誤読される正面を裏蓋ELGINで是正）。しかしこのルールは、
+    安定して正しい正面を、裏蓋の一回ノイズ読み（例: 2924323で稀に出る ISSEY MIYAKE）で
+    誤って上書きしうる。confidence は信頼できない（空欄でも0.8〜0.95）ため、裏蓋を
+    再サンプルして安定性で判定する。
+
+    上書きが起きうるケース（正面・裏蓋ともにあり、異なり、裏蓋が非製造元）のときだけ
+    resample_fn を k 回呼んで裏蓋ブランドを取り直し、元の1回と合わせて同一ブランドが
+    過半数なら True（安定＝上書き採用）、そうでなければ False（ノイズ＝正面を維持）。
+    上書きが起きないケースでは resample_fn を呼ばず True を返す（追加コストなし）。
+
+    Args:
+        front_brand: 正面ブランド（生文字列可）
+        back_brand: 裏蓋ブランド（生文字列可）
+        resample_fn: 引数なしで裏蓋ブランド文字列を返す関数（追加サンプル取得用）
+        k: 追加サンプル数
+
+    Returns:
+        True なら裏蓋採用を信頼してよい、False なら裏蓋はノイズとして正面を維持すべき。
+    """
+    fb = normalize_brand(front_brand) if front_brand else ""
+    bb = normalize_brand(back_brand) if back_brand else ""
+
+    # 上書きが起きうるケースでなければ再サンプルせず信頼（コストなし）
+    if not (fb and bb and fb != bb and bb not in MOVEMENT_MAKERS):
+        return True
+
+    samples = [bb] + [normalize_brand(resample_fn() or "") for _ in range(k)]
+    same = sum(1 for s in samples if s == bb)
+    return same * 2 > len(samples)  # 厳密な過半数
+
+
 def _reconcile_brand_fields(result: dict) -> None:
     """
     normalize_all 内でブランド/シリーズの整合を行い、result を直接更新する。
