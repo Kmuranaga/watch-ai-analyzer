@@ -37,7 +37,7 @@ from config import DEFAULT_INPUT_DIR, DEFAULT_OUTPUT_DIR, GEMINI_API_KEY, MAX_CO
 from modules.folder_scanner import scan_folder, ProductImages
 from modules.ai_analyzer import (
     analyze_front, analyze_back_cover, analyze_comment,
-    analyze_hand_count_cropped,
+    analyze_hand_count_cropped, recover_model_number_upscaled,
     create_batch_requests, submit_batch, poll_batch,
     retrieve_batch_results, parse_batch_results_for_product,
     parse_hand_count_result_for_product,
@@ -194,6 +194,17 @@ def process_single_product(
                     back_data[key] = ""
         except Exception as e:
             logger.error(f"裏蓋ブランド安定化エラー: {e}")
+
+    # --- Step 4.45: 型番リカバリ（初回の裏蓋読みで型番が空の時だけ拡大リトライ＋多数決） ---
+    # 刻印は読めるのに単発だと空になるジッターを回収。読める大半の商品は追加コストなし。
+    if product.back_cover_image and not (back_data.get("model_number") or "").strip():
+        try:
+            recovered = recover_model_number_upscaled(product.back_cover_image)
+            if recovered:
+                logger.info(f"[{product.product_id}] 型番を拡大リトライで回収: {recovered}")
+                back_data["model_number"] = recovered
+        except Exception as e:
+            logger.error(f"型番リカバリエラー: {e}")
 
     # --- Step 4.5: 針数専用パス（アナログのみ）。正面解析の過剰検出(2針→3針)を是正 ---
     hand_count_data = {}

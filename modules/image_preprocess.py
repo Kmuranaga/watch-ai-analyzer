@@ -35,3 +35,17 @@ def crop_dial_to_bytes(image_path: Path, frac: float = 0.55, size: int = 1024) -
     buf = io.BytesIO()
     img.save(buf, format="JPEG", quality=92)
     return buf.getvalue()
+
+
+def upscale_to_bytes(image_path: Path, scale: int = 2) -> bytes:
+    """画像全体を切り取らず scale 倍に拡大した JPEG バイト列を返す。
+
+    裏蓋の型番刻印はケース外周にあることが多く、中心クロップだと切れてしまう。
+    そのため型番リカバリでは「切らずに拡大」して薄い刻印の判読性を上げる。
+    """
+    im = Image.open(image_path).convert("RGB")
+    w, h = im.size
+    im = im.resize((w * scale, h * scale), Image.LANCZOS)
+    buf = io.BytesIO()
+    im.save(buf, format="JPEG", quality=92)
+    return buf.getvalue()

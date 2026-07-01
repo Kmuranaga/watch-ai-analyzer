@@ -6,6 +6,7 @@ AIから取得したテキストを統一フォーマットに変換する
 import logging
 import re
 import unicodedata
+from collections import Counter
 
 logger = logging.getLogger(__name__)
 
@@ -638,6 +639,15 @@ def fewest_hand_count(values: list) -> str:
         if v:
             return v
     return ""
+
+
+def majority_nonempty(values: list) -> str:
+    """非空値のうち最頻値を返す（同数なら先に多く現れた値）。全て空なら空文字。
+
+    裏蓋型番のジッター（読めるのに時々空になる）を、複数読みの多数決で回収するのに使う。
+    """
+    c = Counter(v for v in values if v)
+    return c.most_common(1)[0][0] if c else ""
 
 
 def should_run_hand_count_pass(front_hand_count: str) -> bool:
