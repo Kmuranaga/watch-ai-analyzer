@@ -156,6 +156,13 @@ def _call_api_bytes(prompt: str, image_bytes: bytes, mime_type: str = "image/jpe
     return _call_api_core(prompt, image_parts, label=label)
 
 
+def _call_text_api(prompt: str, label: str = "text") -> dict:
+    """画像なしのテキストプロンプトで Gemini を呼び、JSON を返す（分類等に使う）。"""
+    if not GEMINI_API_KEY:
+        raise ValueError("GEMINI_API_KEY が設定されていません。")
+    return _call_api_core(prompt, [], label=label)
+
+
 def _call_api_core(prompt: str, image_parts: list, label: str) -> dict:
     """画像パーツ列とプロンプトから JSON レスポンスを取得する共通リトライ処理。"""
     if genai is None:
@@ -438,6 +445,33 @@ def recover_model_number_upscaled(back_image_path: Path,
         r = _call_api_bytes(prompt, data, label=f"{back_image_path.name}#up{scale}")
         reads.append(normalize_model_number(r.get("model_number", "")))
     return majority_nonempty(reads)
+
+
+def classify_series_is_slogan(series: str) -> bool:
+    """シリーズ文字列が英語の慣用句/スローガンか（True）、シリーズ・商品名か（False）を判定する。
+
+    複合スローガンフィルタの意味判定ゲート。純英字3語以上の「候補」に対してのみ呼ぶ想定。
+    実在シリーズ（例 Seven Star Deluxe, Lord Matic Special）を誤って消さないよう、
+    判断に迷う場合・API失敗時は False（＝シリーズ名として保持）に倒す。
+    """
+    if not series:
+        return False
+    prompt = (
+        "次の文字列は腕時計の文字盤や裏蓋から読み取ったものです。これが\n"
+        "(A) 英語として意味の通る一般的な慣用句・宣伝文句（スローガン）なのか、\n"
+        "(B) 時計のシリーズ名・商品名（固有名詞）なのか、を判定してください。\n"
+        "重要: 判断に少しでも迷う場合は必ず B（name）と答えること。"
+        "実在するシリーズ名（例: Seven Star Deluxe, Lord Matic Special 等、"
+        "商品名として不自然でない造語の並び）を誤ってスローガンと判定してはいけません。\n"
+        "スローガンの例: MOST VALUABLE PLAYER（一般的な慣用句）。\n"
+        '出力は厳密にJSONのみ: {"type": "phrase"} または {"type": "name"}\n\n'
+        f'文字列: "{series}"'
+    )
+    try:
+        result = _call_text_api(prompt, label=f"slogan:{series[:20]}")
+    except Exception:
+        return False
+    return str(result.get("type", "")).strip().lower() == "phrase"
 
 
 # === Batch API対応 ===

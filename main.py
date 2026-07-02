@@ -38,6 +38,7 @@ from modules.folder_scanner import scan_folder, ProductImages
 from modules.ai_analyzer import (
     analyze_front, analyze_back_cover, analyze_comment,
     analyze_hand_count_cropped, recover_model_number_upscaled,
+    classify_series_is_slogan,
     create_batch_requests, submit_batch, poll_batch,
     retrieve_batch_results, parse_batch_results_for_product,
     parse_hand_count_result_for_product,
@@ -45,7 +46,7 @@ from modules.ai_analyzer import (
 )
 from modules.normalizer import (
     normalize_all, should_run_hand_count_pass, apply_hand_count_override,
-    stabilize_back_brand_override,
+    stabilize_back_brand_override, is_multiword_english_phrase_candidate,
 )
 from modules.category_mapper import CategoryMapper
 from modules.title_generator import generate_title
@@ -240,6 +241,18 @@ def process_single_product(
     result.gender = normalized.get("gender", "")
     result.title_prefix = comment_data.get("title_prefix", "")
     result.abnormality_text = comment_data.get("abnormality_text", "")
+
+    # --- Step 5.5: シリーズのスローガン除外（複合フィルタ）---
+    # 純英字3語以上（構造）かつ 意味判定=スローガン のときだけシリーズを空にする。
+    # 実在シリーズ（Seven Star Deluxe 等）は意味判定が name を返すため保持される。
+    if result.series_en and is_multiword_english_phrase_candidate(result.series_en):
+        try:
+            if classify_series_is_slogan(result.series_en):
+                logger.info(f"[{product.product_id}] シリーズ '{result.series_en}' をスローガンと判定し除外")
+                result.series_en = ""
+                result.series_kana = ""
+        except Exception as e:
+            logger.error(f"シリーズ・スローガン判定エラー: {e}")
 
     # --- Step 6: カテゴリマッピング ---
     # mapping.xlsxのカナ表記でAI結果を補完
