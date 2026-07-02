@@ -650,6 +650,21 @@ def majority_nonempty(values: list) -> str:
     return c.most_common(1)[0][0] if c else ""
 
 
+def is_multiword_english_phrase_candidate(series: str) -> bool:
+    """シリーズがスローガン混入の「候補」か（純英字が3語以上か）を構造だけで判定する。
+
+    実在シリーズは大半が1〜2語で、スローガン（例: MOST VALUABLE PLAYER）は3語以上の純英字。
+    ハイフンや数字を含む語（G-SHOCK, EL-330 等の型番的シリーズ）は候補にしない＝保護する。
+    ここで False なら意味判定（API）を呼ばずに保持する（コスト削減＋安全側）。
+    """
+    if not series:
+        return False
+    words = series.split()
+    if len(words) < 3:
+        return False
+    return all(re.fullmatch(r"[A-Za-z]+", w) for w in words)
+
+
 def should_run_hand_count_pass(front_hand_count: str) -> bool:
     """正面解析の針数がデジタル以外（=アナログ）なら専用針数パスを走らせる。
 
