@@ -18,9 +18,9 @@ class TestGenerateTitle:
             brand_kana="セイコー",
             series_en="PRESAGE",
             model_number="SARX055",
-            dial_color="ブルー",
+            body_color="シルバー",
         )
-        assert "SEIKO セイコー PRESAGE SARX055 ブルー" == title
+        assert "SEIKO セイコー PRESAGE SARX055 シルバー" == title
 
     def test_empty_parts_excluded(self):
         """空文字の要素はスキップされる"""
@@ -43,25 +43,26 @@ class TestGenerateTitle:
         assert title == ""
 
 
-class TestBodyColorOrder:
-    """仕様②: 本体色は文字盤色の直前（本体色→文字盤色の順）に配置される"""
+class TestColorInTitle:
+    """仕様: 本体色はタイトルに含めるが、文字盤色はタイトルから除外する（出力結果には別途保持）"""
 
-    def test_body_color_before_dial_color(self):
+    def test_dial_color_excluded_body_kept(self):
+        """本体色は残し、文字盤色はタイトルに含めない"""
         title = generate_title(
             brand_en="SEIKO",
             body_color="シルバー",
             dial_color="ブラック",
         )
-        assert title == "SEIKO シルバー ブラック"
+        assert title == "SEIKO シルバー"  # 文字盤色「ブラック」はタイトルに出さない
 
     def test_body_color_only(self):
         title = generate_title(brand_en="SEIKO", body_color="ゴールド")
         assert title == "SEIKO ゴールド"
 
-    def test_dial_color_only(self):
-        """本体色なしでも従来通り文字盤色のみ出力"""
+    def test_dial_color_not_in_title(self):
+        """文字盤色のみ渡してもタイトルには出力されない"""
         title = generate_title(brand_en="SEIKO", dial_color="ブルー")
-        assert title == "SEIKO ブルー"
+        assert title == "SEIKO"
 
 
 class TestGenderAdditionalWordOrder:
@@ -112,8 +113,9 @@ class TestGenderAdditionalWordOrder:
             gender="メンズ",
             additional_word="腕時計",
         )
+        # 文字盤色「ブラック」はタイトルから除外される（本体色「シルバー」は残る）
         expected = (
             "【中古】 CASIO カシオ G-SHOCK ジーショック GA-100 "
-            "シルバー ブラック 3針 ラウンド ステンレス 20気圧防水 クォーツ メンズ 腕時計"
+            "シルバー 3針 ラウンド ステンレス 20気圧防水 クォーツ メンズ 腕時計"
         )
         assert title == expected
