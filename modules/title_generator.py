@@ -16,7 +16,7 @@ def generate_title(
     series_kana: str = "",
     model_number: str = "",
     body_color: str = "",
-    dial_color: str = "",
+    dial_color: str = "",  # タイトルには含めない（下記 parts を参照）。CSV出力には別途保持。
     hand_count: str = "",
     case_shape: str = "",
     material: str = "",
@@ -31,6 +31,9 @@ def generate_title(
     Returns:
         生成されたタイトル文字列
     """
+    # 文字盤色(dial_color)はタイトルに含めない。
+    # 画質・主観に依存し精度が相対的に低い(≈87%)ため、タイトルからは除外し、
+    # CSV等の出力結果にのみ表示する方針（本体色 body_color はタイトルに残す）。
     parts = [
         brand_en,
         brand_kana,
@@ -38,7 +41,6 @@ def generate_title(
         series_kana,
         model_number,
         body_color,
-        dial_color,
         hand_count,
         case_shape,
         material,
