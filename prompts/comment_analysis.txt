@@ -6,6 +6,13 @@
 1. **title_prefix** - テキスト先頭が `#`（半角）または `♯`（全角）で始まる場合、記号を除去した文字列
 2. **abnormality_text** - 手書きの異常報告テキストを正確にテキスト化
 3. **abnormality_type** - 異常の種類を分類
+4. **hand_count_comment** - 針数コメントカードの場合、その針数表記
+
+## 針数コメントカードの扱い
+
+- コメントシールが針数の表記（{HAND_COUNT_LABELS}）のみを示すカードの場合、その表記をそのまま `hand_count_comment` に返す
+- 針数カードの内容は `abnormality_text` に含めない（`abnormality_text` と `abnormality_type` は空文字にする）
+- 針数表記でない通常の異常/稼働コメントの場合、`hand_count_comment` は空文字 "" とする
 
 ## 異常種類の分類
 - リューズ: リューズ固着、リューズ破損、リューズ欠損 等
@@ -25,6 +32,7 @@
   "title_prefix": "稼働品",
   "abnormality_text": "",
   "abnormality_type": "",
+  "hand_count_comment": "",
   "confidence": {
     "text_reading": 0.90,
     "classification": 0.95
@@ -38,9 +46,24 @@
   "title_prefix": "",
   "abnormality_text": "リューズ固着あり",
   "abnormality_type": "リューズ",
+  "hand_count_comment": "",
   "confidence": {
     "text_reading": 0.85,
     "classification": 0.90
+  }
+}
+```
+
+針数コメントカードの場合：
+```json
+{
+  "title_prefix": "",
+  "abnormality_text": "",
+  "abnormality_type": "",
+  "hand_count_comment": "2針",
+  "confidence": {
+    "text_reading": 0.95,
+    "classification": 0.95
   }
 }
 ```
