@@ -109,6 +109,64 @@ def setup_logging(verbose: bool = False) -> None:
     )
 
 
+def apply_back_brand_stabilization(product: ProductImages, front_data: dict, back_data: dict) -> None:
+    """裏蓋ブランド上書きの安定化（single/batch 共通）。
+
+    安定して正しい正面を、裏蓋の一回ノイズ読みが上書きするのを防ぐ。上書きが起きうる
+    ケースのみ裏蓋を再サンプルし、不安定なら back_data のブランド系キーを空にする。
+    ※再サンプルは通常APIのリアルタイム呼び出し（batchでは50%割引の対象外だが、
+      発火するのはレアケースのみでコスト影響は軽微）。
+    """
+    logger = logging.getLogger(__name__)
+    back_brand = back_data.get("back_brand_en", "")
+    if not (back_brand and product.back_cover_image):
+        return
+    try:
+        trust = stabilize_back_brand_override(
+            front_data.get("brand_en", ""), back_brand,
+            resample_fn=lambda: analyze_back_cover(product.back_cover_image).get("back_brand_en", ""),
+        )
+        if not trust:
+            logger.info(
+                f"[{product.product_id}] 裏蓋ブランド '{back_brand}' は不安定のため不採用（正面を維持）"
+            )
+            for key in ("back_brand_en", "back_brand_kana", "back_series_en", "back_series_kana"):
+                back_data[key] = ""
+    except Exception as e:
+        logger.error(f"裏蓋ブランド安定化エラー: {e}")
+
+
+def apply_model_number_recovery(product: ProductImages, back_data: dict) -> None:
+    """型番リカバリ（single/batch 共通）。初回の裏蓋読みで型番が空の時だけ、
+    裏蓋を拡大して複数回読み直し多数決で回収する。読めた大半の商品は追加コストなし。"""
+    logger = logging.getLogger(__name__)
+    if not product.back_cover_image or (back_data.get("model_number") or "").strip():
+        return
+    try:
+        recovered = recover_model_number_upscaled(product.back_cover_image)
+        if recovered:
+            logger.info(f"[{product.product_id}] 型番を拡大リトライで回収: {recovered}")
+            back_data["model_number"] = recovered
+    except Exception as e:
+        logger.error(f"型番リカバリエラー: {e}")
+
+
+def apply_series_slogan_filter(product: ProductImages, result: ProductResult) -> None:
+    """シリーズのスローガン除外（single/batch 共通）。純英字3語以上（構造）かつ
+    意味判定=スローガン のときだけシリーズを空にする。実在シリーズは意味判定が
+    name を返すため保持される。"""
+    logger = logging.getLogger(__name__)
+    if not (result.series_en and is_multiword_english_phrase_candidate(result.series_en)):
+        return
+    try:
+        if classify_series_is_slogan(result.series_en):
+            logger.info(f"[{product.product_id}] シリーズ '{result.series_en}' をスローガンと判定し除外")
+            result.series_en = ""
+            result.series_kana = ""
+    except Exception as e:
+        logger.error(f"シリーズ・スローガン判定エラー: {e}")
+
+
 def process_single_product(
     product: ProductImages,
     mapper: CategoryMapper,
@@ -178,34 +236,10 @@ def process_single_product(
                 errors.append(f"{label}AI解析エラー: {e}")
 
     # --- Step 4.4: 裏蓋ブランド上書きの安定化 ---
-    # 安定して正しい正面を、裏蓋の一回ノイズ読みが上書きするのを防ぐ。
-    # 上書きが起きうるケースのみ裏蓋を再サンプルし、不安定なら裏蓋ブランドを破棄して正面を維持。
-    back_brand = back_data.get("back_brand_en", "")
-    if back_brand and product.back_cover_image:
-        try:
-            trust = stabilize_back_brand_override(
-                front_data.get("brand_en", ""), back_brand,
-                resample_fn=lambda: analyze_back_cover(product.back_cover_image).get("back_brand_en", ""),
-            )
-            if not trust:
-                logger.info(
-                    f"[{product.product_id}] 裏蓋ブランド '{back_brand}' は不安定のため不採用（正面を維持）"
-                )
-                for key in ("back_brand_en", "back_brand_kana", "back_series_en", "back_series_kana"):
-                    back_data[key] = ""
-        except Exception as e:
-            logger.error(f"裏蓋ブランド安定化エラー: {e}")
+    apply_back_brand_stabilization(product, front_data, back_data)
 
-    # --- Step 4.45: 型番リカバリ（初回の裏蓋読みで型番が空の時だけ拡大リトライ＋多数決） ---
-    # 刻印は読めるのに単発だと空になるジッターを回収。読める大半の商品は追加コストなし。
-    if product.back_cover_image and not (back_data.get("model_number") or "").strip():
-        try:
-            recovered = recover_model_number_upscaled(product.back_cover_image)
-            if recovered:
-                logger.info(f"[{product.product_id}] 型番を拡大リトライで回収: {recovered}")
-                back_data["model_number"] = recovered
-        except Exception as e:
-            logger.error(f"型番リカバリエラー: {e}")
+    # --- Step 4.45: 型番リカバリ（空欄時のみ拡大リトライ） ---
+    apply_model_number_recovery(product, back_data)
 
     # --- Step 4.5: 針数専用パス（アナログのみ）。正面解析の過剰検出(2針→3針)を是正 ---
     hand_count_data = {}
@@ -243,16 +277,7 @@ def process_single_product(
     result.abnormality_text = comment_data.get("abnormality_text", "")
 
     # --- Step 5.5: シリーズのスローガン除外（複合フィルタ）---
-    # 純英字3語以上（構造）かつ 意味判定=スローガン のときだけシリーズを空にする。
-    # 実在シリーズ（Seven Star Deluxe 等）は意味判定が name を返すため保持される。
-    if result.series_en and is_multiword_english_phrase_candidate(result.series_en):
-        try:
-            if classify_series_is_slogan(result.series_en):
-                logger.info(f"[{product.product_id}] シリーズ '{result.series_en}' をスローガンと判定し除外")
-                result.series_en = ""
-                result.series_kana = ""
-        except Exception as e:
-            logger.error(f"シリーズ・スローガン判定エラー: {e}")
+    apply_series_slogan_filter(product, result)
 
     # --- Step 6: カテゴリマッピング ---
     # mapping.xlsxのカナ表記でAI結果を補完
@@ -468,6 +493,11 @@ def main():
             if not back_data and product.back_cover_image:
                 errors.append("裏蓋AI解析: 結果なし")
 
+            # --- 条件付きフォローアップ（single と共通のヘルパー） ---
+            # 一次結果を見てから必要な個体だけ通常APIで追い読みする。発火はレアケースのみ。
+            apply_back_brand_stabilization(product, front_data, back_data)
+            apply_model_number_recovery(product, back_data)
+
             # データ正規化（針数専用パスのクロップ結果で hand_count を上書き）
             merged_data = {**front_data, **back_data}
             merged_data = apply_hand_count_override(merged_data, hand_count_data)
@@ -488,6 +518,9 @@ def main():
             result.gender = normalized.get("gender", "")
             result.title_prefix = comment_data.get("title_prefix", "")
             result.abnormality_text = comment_data.get("abnormality_text", "")
+
+            # シリーズのスローガン除外（single と共通のヘルパー）
+            apply_series_slogan_filter(product, result)
 
             # カテゴリマッピング（mapping.xlsxのカナ表記で補完）
             if result.brand_en and not result.brand_kana:
