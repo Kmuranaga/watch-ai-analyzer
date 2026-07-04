@@ -29,6 +29,7 @@ COLUMNS = [
     "本体色",
     "文字盤色",
     "針数",
+    "針数判定元",
     "ケース形状",
     "タイトル先頭文言",
     "異常内容",
@@ -54,6 +55,7 @@ class ProductResult:
     body_color: str = ""              # 本体色（ケース・バンドの色）
     dial_color: str = ""              # 文字盤色
     hand_count: str = ""              # 針数
+    hand_count_source: str = ""       # 針数判定元（コメント / AI（クロノグラフ） / 空欄）
     case_shape: str = ""              # ケース形状
     gender: str = ""                  # 性別（メンズ/レディース/ユニセックス/不明）
     title_prefix: str = ""            # タイトル先頭文言
@@ -78,6 +80,7 @@ class ProductResult:
             self.body_color,
             self.dial_color,
             self.hand_count,
+            self.hand_count_source,
             self.case_shape,
             self.title_prefix,
             self.abnormality_text,
@@ -169,7 +172,7 @@ def write_excel(results: list[ProductResult], output_path: Path) -> None:
                     cell.fill = warning_fill
 
     # 列幅の自動調整
-    column_widths = [14, 14, 50, 50, 16, 14, 18, 14, 16, 12, 10, 14, 10, 10, 8, 14, 20, 30, 20]
+    column_widths = [14, 14, 50, 50, 16, 14, 18, 14, 16, 12, 10, 14, 10, 10, 8, 10, 14, 20, 30, 20]
     for col_idx, width in enumerate(column_widths, 1):
         ws.column_dimensions[chr(64 + col_idx) if col_idx <= 26 else ""].width = width
 
