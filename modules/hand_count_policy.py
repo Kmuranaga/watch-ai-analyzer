@@ -36,30 +36,44 @@ def load_labels(path: Path | None = None) -> dict:
     xlsx形式（1行目ヘッダー）: キー | 出力表記 | 同義語（カンマ区切り）
     """
     file = path or HAND_COUNT_LABELS_FILE
-    if not Path(file).exists():
-        logger.info(f"針数ラベル設定ファイルなし。既定値を使用: {file}")
+
+    def _defaults() -> dict:
         return {k: {"label": v["label"], "synonyms": list(v["synonyms"])}
                 for k, v in DEFAULT_LABELS.items()}
+
+    if not Path(file).exists():
+        logger.info(f"針数ラベル設定ファイルなし。既定値を使用: {file}")
+        return _defaults()
+
+    # 先方が手編集するファイルのため、壊れていても解析ジョブ全体を落とさず
+    # 既定値へフォールバックする（設定ミスで機能が壊れないように）
     labels = {}
-    wb = openpyxl.load_workbook(file, read_only=True)
-    ws = wb.active
-    header = True
-    for row in ws.iter_rows(values_only=True):
-        if header:
-            header = False
-            continue
-        if not row or not row[0]:
-            continue
-        key = str(row[0]).strip()
-        label = str(row[1]).strip() if len(row) > 1 and row[1] else ""
-        syn_raw = str(row[2]).strip() if len(row) > 2 and row[2] else ""
-        synonyms = [s.strip() for s in syn_raw.split(",") if s.strip()]
-        if key and label:
-            if label not in synonyms:
-                synonyms.insert(0, label)
-            labels[key] = {"label": label, "synonyms": synonyms}
-    wb.close()
-    # 不足キーは既定値で補完（設定ミスで機能が壊れないように）
+    try:
+        wb = openpyxl.load_workbook(file, read_only=True)
+        try:
+            ws = wb.active
+            header = True
+            for row in ws.iter_rows(values_only=True):
+                if header:
+                    header = False
+                    continue
+                if not row or not row[0]:
+                    continue
+                key = str(row[0]).strip()
+                label = str(row[1]).strip() if len(row) > 1 and row[1] else ""
+                syn_raw = str(row[2]).strip() if len(row) > 2 and row[2] else ""
+                synonyms = [s.strip() for s in syn_raw.split(",") if s.strip()]
+                if key and label:
+                    if label not in synonyms:
+                        synonyms.insert(0, label)
+                    labels[key] = {"label": label, "synonyms": synonyms}
+        finally:
+            wb.close()
+    except Exception as e:
+        logger.error(f"針数ラベル設定の読込に失敗。既定値を使用します: {file} ({e})")
+        return _defaults()
+
+    # 不足キーは既定値で補完
     for k, v in DEFAULT_LABELS.items():
         labels.setdefault(k, {"label": v["label"], "synonyms": list(v["synonyms"])})
     logger.info(f"針数ラベル設定読込完了: {len(labels)}種")
@@ -105,6 +119,19 @@ def labels_for_prompt() -> str:
     return "／".join(parts)
 
 
+def title_hand_count_for(hand_count: str) -> str:
+    """タイトルに載せてよい針数表記を返す。「針がすべて欠損」と空欄はタイトルに載せない。
+
+    処理パイプラインだけでなく、タイトル再生成（Web UI の /api/regenerate_title）など
+    針数値からタイトルを作り直す全ての経路でこの関数を通すこと。
+    """
+    if not hand_count:
+        return ""
+    if hand_count == get_labels()["all_hands_missing"]["label"]:
+        return ""
+    return hand_count
+
+
 def decide_hand_count(front_hand_count: str, comment_hand_count: str) -> tuple[str, str, str]:
     """針数の最終決定（確定仕様）。
 
@@ -118,7 +145,5 @@ def decide_hand_count(front_hand_count: str, comment_hand_count: str) -> tuple[s
         return "クロノグラフ", "AI（クロノグラフ）", "クロノグラフ"
     label = normalize_comment_hand_count(comment_hand_count or "")
     if label:
-        missing_label = get_labels()["all_hands_missing"]["label"]
-        title_value = "" if label == missing_label else label
-        return label, "コメント", title_value
+        return label, "コメント", title_hand_count_for(label)
     return "", "", ""

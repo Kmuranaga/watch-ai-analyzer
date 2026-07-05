@@ -337,3 +337,45 @@ def test_to_row_matches_columns_and_places_source():
     assert len(row) == len(COLUMNS)
     assert row[COLUMNS.index("針数")] == "2針"
     assert row[COLUMNS.index("針数判定元")] == "コメント"
+
+
+# === レビュー対応: title_hand_count_for / 壊れた設定ファイル / regenerate_title ===
+
+def test_title_hand_count_for():
+    from modules.hand_count_policy import title_hand_count_for
+    assert title_hand_count_for("2針") == "2針"
+    assert title_hand_count_for("クロノグラフ") == "クロノグラフ"
+    assert title_hand_count_for("") == ""
+    assert title_hand_count_for("針がすべて欠損") == ""  # タイトルに載せない
+
+
+def test_load_labels_falls_back_on_corrupt_file(tmp_path):
+    # 先方が手編集して壊れたxlsxでもジョブを落とさず既定値で継続する
+    bad = tmp_path / "broken.xlsx"
+    bad.write_bytes(b"this is not an xlsx file")
+    labels = load_labels(bad)
+    assert {k: v["label"] for k, v in labels.items()} == \
+        {k: v["label"] for k, v in DEFAULT_LABELS.items()}
+
+
+def test_regenerate_title_excludes_missing_hands_label():
+    # Web UIの「タイトル再生成」経由でも「針がすべて欠損」がタイトルに混入しない
+    import app as app_module
+    client = app_module.app.test_client()
+    payload = {
+        "brand_en": "SEIKO", "brand_kana": "セイコー",
+        "body_color": "シルバー", "hand_count": "針がすべて欠損",
+        "case_shape": "ラウンド",
+    }
+    resp = client.post("/api/regenerate_title", json=payload)
+    assert resp.status_code == 200
+    title = resp.get_json()["title"]
+    assert "針がすべて欠損" not in title
+    assert "SEIKO" in title and "シルバー" in title
+
+
+def test_regenerate_title_keeps_normal_hand_count():
+    import app as app_module
+    client = app_module.app.test_client()
+    resp = client.post("/api/regenerate_title", json={"brand_en": "SEIKO", "hand_count": "3針"})
+    assert resp.get_json()["title"] == "SEIKO 3針"

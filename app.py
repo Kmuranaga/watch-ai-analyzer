@@ -32,7 +32,7 @@ from config import DEFAULT_INPUT_DIR, MAX_CONCURRENT_PRODUCTS, CSV_ENCODING
 from modules.folder_scanner import scan_folder
 from modules.ai_analyzer import analyze_front, analyze_back_cover, analyze_comment, register_rate_limit_callback
 from modules.normalizer import normalize_all
-from modules.hand_count_policy import decide_hand_count
+from modules.hand_count_policy import decide_hand_count, title_hand_count_for
 from modules.category_mapper import CategoryMapper
 from modules.title_generator import generate_title
 from modules.csv_writer import ProductResult, COLUMNS, write_csv, write_excel
@@ -627,7 +627,8 @@ def api_regenerate_title():
         model_number=data.get("model_number", ""),
         body_color=data.get("body_color", ""),
         dial_color=data.get("dial_color", ""),
-        hand_count=data.get("hand_count", ""),
+        # 「針がすべて欠損」と空欄はタイトルに載せない（処理パイプラインと同じ規則）
+        hand_count=title_hand_count_for(data.get("hand_count", "")),
         case_shape=data.get("case_shape", ""),
         material=data.get("material", ""),
         water_resistance=data.get("water_resistance", ""),
