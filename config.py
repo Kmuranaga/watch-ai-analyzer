@@ -42,6 +42,7 @@ DEFAULT_INPUT_DIR = PROJECT_ROOT / "input"
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "output"
 MAPPING_FILE = PROJECT_ROOT / "data" / "mapping.xlsx"
 CATEGORY_NAME_FILE = PROJECT_ROOT / "data" / "category_names.xlsx"
+HAND_COUNT_LABELS_FILE = PROJECT_ROOT / "data" / "hand_count_labels.xlsx"
 PROMPTS_DIR = PROJECT_ROOT / "prompts"
 
 # === 画像設定 ===
@@ -53,6 +54,7 @@ IDX_FRONT = 0         # 1枚目: 正面画像
 IDX_BACK_COVER = 7    # 8枚目: 裏蓋画像
 IDX_COMMENT1 = 9      # 10枚目: コメントシール1
 IDX_COMMENT2 = 10     # 11枚目: コメントシール2
+IDX_COMMENT3 = 11    # 12枚目: コメントシール3（針数コメント等）
 
 # === リトライ設定 ===
 API_MAX_RETRIES = 2

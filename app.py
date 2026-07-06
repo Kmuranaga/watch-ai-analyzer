@@ -32,6 +32,7 @@ from config import DEFAULT_INPUT_DIR, MAX_CONCURRENT_PRODUCTS, CSV_ENCODING
 from modules.folder_scanner import scan_folder
 from modules.ai_analyzer import analyze_front, analyze_back_cover, analyze_comment, register_rate_limit_callback
 from modules.normalizer import normalize_all
+from modules.hand_count_policy import decide_hand_count, title_hand_count_for
 from modules.category_mapper import CategoryMapper
 from modules.title_generator import generate_title
 from modules.csv_writer import ProductResult, COLUMNS, write_csv, write_excel
@@ -220,11 +221,19 @@ def process_product_with_progress(
     result.movement_type = normalized.get("movement_type", "")
     result.body_color = normalized.get("body_color", "")
     result.dial_color = normalized.get("dial_color", "")
-    result.hand_count = normalized.get("hand_count", "")
     result.case_shape = normalized.get("case_shape", "")
     result.gender = normalized.get("gender", "")
     result.title_prefix = comment_data.get("title_prefix", "")
     result.abnormality_text = comment_data.get("abnormality_text", "")
+
+    # 針数の決定（確定仕様: クロノはAI採用／それ以外はコメントのみ／無ければ空欄=要確認）
+    hand_count, hand_count_source, title_hand_count = decide_hand_count(
+        front_data.get("hand_count", ""), comment_data.get("hand_count_comment", ""),
+    )
+    result.hand_count = hand_count
+    result.hand_count_source = hand_count_source
+    if not hand_count:
+        errors.append("針数コメント無し")
 
     # カテゴリマッピング
     if result.brand_en and not result.brand_kana:
@@ -286,7 +295,7 @@ def process_product_with_progress(
         model_number=result.model_number,
         body_color=result.body_color,
         dial_color=result.dial_color,
-        hand_count=result.hand_count,
+        hand_count=title_hand_count,
         case_shape=result.case_shape,
         material=result.material,
         water_resistance=result.water_resistance,
@@ -618,7 +627,8 @@ def api_regenerate_title():
         model_number=data.get("model_number", ""),
         body_color=data.get("body_color", ""),
         dial_color=data.get("dial_color", ""),
-        hand_count=data.get("hand_count", ""),
+        # 「針がすべて欠損」と空欄はタイトルに載せない（処理パイプラインと同じ規則）
+        hand_count=title_hand_count_for(data.get("hand_count", "")),
         case_shape=data.get("case_shape", ""),
         material=data.get("material", ""),
         water_resistance=data.get("water_resistance", ""),

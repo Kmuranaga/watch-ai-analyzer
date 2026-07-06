@@ -89,8 +89,9 @@ def test_default_crop_fracs_has_multiple():
 
 # === ai_analyzer: batch ===
 
-def test_create_batch_requests_includes_cropped_hand(monkeypatch):
-    monkeypatch.setattr(ip, "crop_dial_to_bytes", lambda p, frac, size=1024: b"x")
+def test_create_batch_requests_excludes_cropped_hand(monkeypatch):
+    # 針数コメント対応により、AI針数パイプライン（クロップ・アンサンブル）は
+    # パイプラインから撤去された（コスト削減）。クロップ要求が生成されないことを検証。
     calls = []
     monkeypatch.setattr(ai, "_build_batch_request",
                         lambda cid, *a, **k: (calls.append(cid), {"metadata": {"custom_id": cid}})[1])
@@ -106,8 +107,7 @@ def test_create_batch_requests_includes_cropped_hand(monkeypatch):
 
     ai.create_batch_requests([FakeProduct()])
     assert "P1__front" in calls
-    assert "P1__hand_c0" in calls
-    assert "P1__hand_c1" in calls
+    assert not any("hand_c" in c for c in calls)
 
 
 def test_parse_hand_count_result_fewest():

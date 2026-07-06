@@ -62,6 +62,12 @@ def _load_prompt(filename: str) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def _load_comment_prompt() -> str:
+    """コメント解析プロンプトを読み込み、針数ラベル定義を注入する。"""
+    from modules.hand_count_policy import labels_for_prompt
+    return _load_prompt("comment_analysis.txt").replace("{HAND_COUNT_LABELS}", labels_for_prompt())
+
+
 def _encode_image(image_path: Path) -> tuple[str, str]:
     """画像をBase64エンコードし、メディアタイプを返す"""
     suffix = image_path.suffix.lower()
@@ -347,23 +353,26 @@ def analyze_back_cover(image_path: Path) -> dict:
 
 def analyze_comment(image_paths: list[Path]) -> dict:
     """
-    コメントシール画像を解析し、異常報告テキストを取得する。
-    複数枚ある場合は結合する。
+    コメントシール画像を解析し、異常報告テキスト・針数コメントを取得する。
+    複数枚ある場合は結合する（針数コメントは最初の非空値を採用）。
 
     Returns:
         {
             "abnormality_text": str,
             "abnormality_type": str,
+            "hand_count_comment": str,
             "confidence": dict,
         }
     """
     if not image_paths:
-        return {"title_prefix": "", "abnormality_text": "", "abnormality_type": "", "confidence": {}}
+        return {"title_prefix": "", "abnormality_text": "", "abnormality_type": "",
+                "hand_count_comment": "", "confidence": {}}
 
-    prompt = _load_prompt("comment_analysis.txt")
+    prompt = _load_comment_prompt()
     all_texts = []
     all_types = []
     title_prefix = ""
+    hand_count_comment = ""
 
     for image_path in image_paths:
         logger.info(f"コメントシール解析: {image_path}")
@@ -380,10 +389,15 @@ def analyze_comment(image_paths: list[Path]) -> dict:
         if atype:
             all_types.append(atype)
 
+        hcc = result.get("hand_count_comment", "")
+        if hcc and not hand_count_comment:
+            hand_count_comment = hcc
+
     return {
         "title_prefix": title_prefix,
         "abnormality_text": " / ".join(all_texts) if all_texts else "",
         "abnormality_type": ", ".join(all_types) if all_types else "",
+        "hand_count_comment": hand_count_comment,
         "confidence": result.get("confidence", {}) if image_paths else {},
     }
 
@@ -538,14 +552,12 @@ def create_batch_requests(products: list) -> list[dict]:
       - "{product_id}__back"     → 裏蓋画像解析
       - "{product_id}__comment1" → コメントシール1
       - "{product_id}__comment2" → コメントシール2
-      - "{product_id}__hand_c0/c1" → 針数専用パス（クロップ別）
+      - "{product_id}__comment3" → コメントシール3（針数コメント等）
     """
-    from modules.image_preprocess import crop_dial_to_bytes
-
     requests = []
     front_prompt = _load_prompt("front_analysis.txt")
     back_prompt = _load_prompt("back_analysis.txt")
-    comment_prompt = _load_prompt("comment_analysis.txt")
+    comment_prompt = _load_comment_prompt()
 
     for product in products:
         pid = product.product_id
@@ -553,12 +565,6 @@ def create_batch_requests(products: list) -> list[dict]:
         if product.front_image:
             extra = [product.diagonal_image] if product.diagonal_image else None
             requests.append(_build_batch_request(f"{pid}__front", front_prompt, product.front_image, extra_images=extra))
-            # 針数専用パス: 文字盤を複数倍率でクロップし「少ない本数」採用（過剰検出抑制）。
-            # Batchは送信前に正面結果を参照できないため、デジタル時計にもクロップ要求を出す
-            # （結果は apply_hand_count_override 側でデジタル判定され無視されるため正しさは保たれる）。
-            for i, frac in enumerate(HAND_COUNT_CROP_FRACS):
-                crop_bytes = crop_dial_to_bytes(product.front_image, frac)
-                requests.append(_build_batch_request_bytes(f"{pid}__hand_c{i}", front_prompt, crop_bytes))
 
         if product.back_cover_image:
             requests.append(_build_batch_request(f"{pid}__back", back_prompt, product.back_cover_image))
@@ -702,13 +708,14 @@ def parse_batch_results_for_product(
     front_data = batch_results.get(f"{product_id}__front", {})
     back_data = batch_results.get(f"{product_id}__back", {})
 
-    # コメントデータ: comment1, comment2 を結合
+    # コメントデータ: comment1〜comment3 を結合（針数コメントは最初の非空値を採用）
     all_texts = []
     all_types = []
     title_prefix = ""
+    hand_count_comment = ""
     last_confidence = {}
 
-    for i in range(1, 3):  # comment1, comment2
+    for i in range(1, 4):  # comment1, comment2, comment3
         key = f"{product_id}__comment{i}"
         cdata = batch_results.get(key)
         if cdata:
@@ -721,12 +728,16 @@ def parse_batch_results_for_product(
                 all_texts.append(text)
             if atype:
                 all_types.append(atype)
+            hcc = cdata.get("hand_count_comment", "")
+            if hcc and not hand_count_comment:
+                hand_count_comment = hcc
             last_confidence = cdata.get("confidence", {})
 
     comment_data = {
         "title_prefix": title_prefix,
         "abnormality_text": " / ".join(all_texts) if all_texts else "",
         "abnormality_type": ", ".join(all_types) if all_types else "",
+        "hand_count_comment": hand_count_comment,
         "confidence": last_confidence,
     }
 

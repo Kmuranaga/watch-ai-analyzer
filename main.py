@@ -37,17 +37,17 @@ from config import DEFAULT_INPUT_DIR, DEFAULT_OUTPUT_DIR, GEMINI_API_KEY, MAX_CO
 from modules.folder_scanner import scan_folder, ProductImages
 from modules.ai_analyzer import (
     analyze_front, analyze_back_cover, analyze_comment,
-    analyze_hand_count_cropped, recover_model_number_upscaled,
+    recover_model_number_upscaled,
     classify_series_is_slogan,
     create_batch_requests, submit_batch, poll_batch,
     retrieve_batch_results, parse_batch_results_for_product,
-    parse_hand_count_result_for_product,
     register_rate_limit_callback,
 )
 from modules.normalizer import (
-    normalize_all, should_run_hand_count_pass, apply_hand_count_override,
+    normalize_all,
     stabilize_back_brand_override, is_multiword_english_phrase_candidate,
 )
+from modules.hand_count_policy import decide_hand_count
 from modules.category_mapper import CategoryMapper
 from modules.title_generator import generate_title
 from modules.csv_writer import ProductResult, write_csv, write_excel
@@ -241,22 +241,8 @@ def process_single_product(
     # --- Step 4.45: 型番リカバリ（空欄時のみ拡大リトライ） ---
     apply_model_number_recovery(product, back_data)
 
-    # --- Step 4.5: 針数専用パス（アナログのみ）。正面解析の過剰検出(2針→3針)を是正 ---
-    hand_count_data = {}
-    if product.front_image and front_data and should_run_hand_count_pass(front_data.get("hand_count", "")):
-        try:
-            hand_count_data = analyze_hand_count_cropped(product.front_image)
-            new_hc = hand_count_data.get("hand_count", "")
-            old_hc = front_data.get("hand_count", "")
-            if new_hc and new_hc != old_hc:
-                logger.info(f"[{product.product_id}] 針数を専用パスで上書き: {old_hc} → {new_hc}")
-        except Exception as e:
-            logger.error(f"針数専用解析エラー: {e}")
-            errors.append(f"針数専用解析エラー: {e}")
-
     # --- Step 5: データ正規化 ---
     merged_data = {**front_data, **back_data}
-    merged_data = apply_hand_count_override(merged_data, hand_count_data)
     normalized = normalize_all(merged_data)
 
     # 結果格納
@@ -270,11 +256,19 @@ def process_single_product(
     result.movement_type = normalized.get("movement_type", "")
     result.body_color = normalized.get("body_color", "")
     result.dial_color = normalized.get("dial_color", "")
-    result.hand_count = normalized.get("hand_count", "")
     result.case_shape = normalized.get("case_shape", "")
     result.gender = normalized.get("gender", "")
     result.title_prefix = comment_data.get("title_prefix", "")
     result.abnormality_text = comment_data.get("abnormality_text", "")
+
+    # 針数の決定（確定仕様: クロノはAI採用／それ以外はコメントのみ／無ければ空欄=要確認）
+    hand_count, hand_count_source, title_hand_count = decide_hand_count(
+        front_data.get("hand_count", ""), comment_data.get("hand_count_comment", ""),
+    )
+    result.hand_count = hand_count
+    result.hand_count_source = hand_count_source
+    if not hand_count:
+        errors.append("針数コメント無し")
 
     # --- Step 5.5: シリーズのスローガン除外（複合フィルタ）---
     apply_series_slogan_filter(product, result)
@@ -341,7 +335,7 @@ def process_single_product(
         model_number=result.model_number,
         body_color=result.body_color,
         dial_color=result.dial_color,
-        hand_count=result.hand_count,
+        hand_count=title_hand_count,
         case_shape=result.case_shape,
         material=result.material,
         water_resistance=result.water_resistance,
@@ -484,9 +478,6 @@ def main():
             front_data, back_data, comment_data = parse_batch_results_for_product(
                 product.product_id, batch_results,
             )
-            hand_count_data = parse_hand_count_result_for_product(
-                product.product_id, batch_results,
-            )
 
             if not front_data and product.front_image:
                 errors.append("正面AI解析: 結果なし")
@@ -498,9 +489,8 @@ def main():
             apply_back_brand_stabilization(product, front_data, back_data)
             apply_model_number_recovery(product, back_data)
 
-            # データ正規化（針数専用パスのクロップ結果で hand_count を上書き）
+            # データ正規化
             merged_data = {**front_data, **back_data}
-            merged_data = apply_hand_count_override(merged_data, hand_count_data)
             normalized = normalize_all(merged_data)
 
             result.brand_en = normalized.get("brand_en", "")
@@ -513,11 +503,19 @@ def main():
             result.movement_type = normalized.get("movement_type", "")
             result.body_color = normalized.get("body_color", "")
             result.dial_color = normalized.get("dial_color", "")
-            result.hand_count = normalized.get("hand_count", "")
             result.case_shape = normalized.get("case_shape", "")
             result.gender = normalized.get("gender", "")
             result.title_prefix = comment_data.get("title_prefix", "")
             result.abnormality_text = comment_data.get("abnormality_text", "")
+
+            # 針数の決定（確定仕様: クロノはAI採用／それ以外はコメントのみ／無ければ空欄=要確認）
+            hand_count, hand_count_source, title_hand_count = decide_hand_count(
+                front_data.get("hand_count", ""), comment_data.get("hand_count_comment", ""),
+            )
+            result.hand_count = hand_count
+            result.hand_count_source = hand_count_source
+            if not hand_count:
+                errors.append("針数コメント無し")
 
             # シリーズのスローガン除外（single と共通のヘルパー）
             apply_series_slogan_filter(product, result)
@@ -583,7 +581,7 @@ def main():
                 model_number=result.model_number,
                 body_color=result.body_color,
                 dial_color=result.dial_color,
-                hand_count=result.hand_count,
+                hand_count=title_hand_count,
                 case_shape=result.case_shape,
                 material=result.material,
                 water_resistance=result.water_resistance,

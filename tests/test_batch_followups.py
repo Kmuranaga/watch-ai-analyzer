@@ -40,8 +40,6 @@ def _run_batch(tmp_path, monkeypatch, front, back,
     monkeypatch.setattr(main_module, "retrieve_batch_results", lambda _b: {})
     monkeypatch.setattr(main_module, "parse_batch_results_for_product",
                         lambda _pid, _r: (dict(front), dict(back), dict(comment)))
-    monkeypatch.setattr(main_module, "parse_hand_count_result_for_product",
-                        lambda _pid, _r: {})
 
     calls = {"resample": 0, "recover": 0, "slogan": 0}
 

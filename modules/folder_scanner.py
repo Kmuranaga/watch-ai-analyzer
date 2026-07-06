@@ -19,6 +19,7 @@
   9枚目: 裏蓋正面
   10枚目: コメントシール1 ★AI解析（存在時のみ）
   11枚目: コメントシール2 ★AI解析（存在時のみ）
+  12枚目: コメントシール3 ★AI解析（存在時のみ・針数コメント等）
 """
 
 import logging
@@ -32,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 # 画像枚数の期待値（バーコードなし）
 IMAGES_MIN = 9   # 商品画像9枚（異常報告なし）
-IMAGES_MAX = 11  # 商品画像9枚 + コメントシール最大2枚
+IMAGES_MAX = 12  # 商品画像9枚 + コメントシール最大3枚
 
 
 @dataclass
@@ -60,12 +61,14 @@ class ProductImages:
 
     @property
     def comment_images(self) -> list[Path]:
-        """10-11枚目: コメントシール画像（存在する場合のみ）"""
+        """10-12枚目: コメントシール画像（存在する場合のみ）"""
         result = []
         if len(self.images) > 9:
             result.append(self.images[9])
         if len(self.images) > 10:
             result.append(self.images[10])
+        if len(self.images) > 11:
+            result.append(self.images[11])
         return result
 
     @property
