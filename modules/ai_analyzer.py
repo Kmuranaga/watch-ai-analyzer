@@ -351,6 +351,37 @@ def analyze_back_cover(image_path: Path) -> dict:
     return result
 
 
+def verify_back_brand_choice(back_image_path: Path, front_brand: str, back_brand: str) -> str:
+    """裏蓋の刻印がどちらのブランドかを二択で照合する（幻覚検出用）。
+
+    自由読み（analyze_back_cover）はムーブメント刻印等から実在しないブランドを
+    一貫して幻覚することがある（例: BINLUN の裏蓋を KENTEX と誤読）。候補を提示した
+    照合タスクにすると文字パターンの突き合わせになり、誤りにくい。
+
+    Returns:
+        "front" / "back" / "unknown"（判定不能・API失敗時は "unknown"）
+    """
+    prompt = (
+        "この腕時計の裏蓋画像を注意深く見てください。ケースまたは裏蓋に実際に刻印されている"
+        "「製品ブランド名」は、次のどれですか。ムーブメント製造元（MIYOTA等）や機能語・"
+        "数字は無視してください。\n"
+        f"A: {front_brand}\n"
+        f"B: {back_brand}\n"
+        "C: どちらの文字も刻印されていない／判読不能\n"
+        '出力は厳密にJSONのみ: {"answer": "A|B|C", "engraved_text": "実際に見えた文字"}'
+    )
+    try:
+        result = _call_api(prompt, back_image_path)
+    except Exception:
+        return "unknown"
+    answer = str(result.get("answer", "")).strip().upper()
+    if answer == "A":
+        return "front"
+    if answer == "B":
+        return "back"
+    return "unknown"
+
+
 def analyze_comment(image_paths: list[Path]) -> dict:
     """
     コメントシール画像を解析し、異常報告テキスト・針数コメントを取得する。

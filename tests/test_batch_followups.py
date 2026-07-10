@@ -29,7 +29,7 @@ def _make_product(tmp_path):
 
 
 def _run_batch(tmp_path, monkeypatch, front, back,
-               resample_brand="", recovered_model="", slogan=False):
+               resample_brand="", recovered_model="", slogan=False, choice="back"):
     """batchモードで main() を駆動し、(出力行, フォローアップ呼び出し回数) を返す。"""
     product = _make_product(tmp_path)
     comment = {"title_prefix": "", "abnormality_text": ""}
@@ -41,7 +41,12 @@ def _run_batch(tmp_path, monkeypatch, front, back,
     monkeypatch.setattr(main_module, "parse_batch_results_for_product",
                         lambda _pid, _r: (dict(front), dict(back), dict(comment)))
 
-    calls = {"resample": 0, "recover": 0, "slogan": 0}
+    calls = {"resample": 0, "recover": 0, "slogan": 0, "choice": 0}
+
+    def fake_choice(_img, _fb, _bb):
+        calls["choice"] += 1
+        return choice
+    monkeypatch.setattr(main_module, "verify_back_brand_choice", fake_choice)
 
     def fake_back(_img):
         calls["resample"] += 1
@@ -93,6 +98,36 @@ def test_stable_back_brand_adopted_in_batch(tmp_path, monkeypatch):
         recovered_model="",
     )
     assert row["ブランド英字"] == "ELGIN"
+
+
+def test_hallucinated_back_brand_rejected_in_batch(tmp_path, monkeypatch):
+    # BINLUN型: 正面BINLUN(正・conf1.0) vs 裏蓋KENTEX(一貫した幻覚読み)。
+    # 再サンプル多数決は「一貫した」幻覚を通してしまうが、二択照合が
+    # 「裏蓋に実際に刻印されているのは正面(BINLUN)」と答える → 裏蓋不採用。
+    row, calls = _run_batch(
+        tmp_path, monkeypatch,
+        front={"brand_en": "BINLUN", "hand_count": "3針"},
+        back={"back_brand_en": "KENTEX", "model_number": "BL0067G"},
+        choice="front",
+    )
+    assert row["ブランド英字"] == "BINLUN"
+    assert calls["choice"] == 1
+    assert calls["resample"] == 0  # 二択照合で不採用が確定 → 再サンプルは走らない
+
+
+def test_choice_back_still_allows_override(tmp_path, monkeypatch):
+    # ELGIN型（非回帰）: 二択照合が「裏蓋刻印は裏蓋ブランド(ELGIN)」と答え、
+    # 再サンプルも安定 → 従来どおり裏蓋採用で正面誤読を是正。
+    row, calls = _run_batch(
+        tmp_path, monkeypatch,
+        front={"brand_en": "TAG HEUER", "hand_count": "3針"},
+        back={"back_brand_en": "ELGIN", "model_number": ""},
+        resample_brand="ELGIN",
+        choice="back",
+    )
+    assert row["ブランド英字"] == "ELGIN"
+    assert calls["choice"] == 1
+    assert calls["resample"] == 3
 
 
 def test_model_recovery_fires_when_empty_in_batch(tmp_path, monkeypatch):
