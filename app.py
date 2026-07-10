@@ -36,6 +36,7 @@ from modules.hand_count_policy import decide_hand_count, title_hand_count_for
 from modules.category_mapper import CategoryMapper
 from modules.title_generator import generate_title
 from modules.csv_writer import ProductResult, COLUMNS, write_csv, write_excel
+from main import apply_back_brand_stabilization, apply_model_number_recovery, apply_series_slogan_filter
 
 app = Flask(__name__)
 
@@ -207,6 +208,10 @@ def process_product_with_progress(
                     "level": "error",
                 })
 
+    # 条件付きフォローアップ（CLIと共通のヘルパー。発火はレアケースのみ）
+    apply_back_brand_stabilization(product, front_data, back_data)
+    apply_model_number_recovery(product, back_data)
+
     # データ正規化
     merged_data = {**front_data, **back_data}
     normalized = normalize_all(merged_data)
@@ -234,6 +239,9 @@ def process_product_with_progress(
     result.hand_count_source = hand_count_source
     if not hand_count:
         errors.append("針数コメント無し")
+
+    # シリーズのスローガン除外（CLIと共通のヘルパー）
+    apply_series_slogan_filter(product, result)
 
     # カテゴリマッピング
     if result.brand_en and not result.brand_kana:

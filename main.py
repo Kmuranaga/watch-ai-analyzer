@@ -37,6 +37,7 @@ from config import DEFAULT_INPUT_DIR, DEFAULT_OUTPUT_DIR, GEMINI_API_KEY, MAX_CO
 from modules.folder_scanner import scan_folder, ProductImages
 from modules.ai_analyzer import (
     analyze_front, analyze_back_cover, analyze_comment,
+    verify_back_brand_choice,
     recover_model_number_upscaled,
     classify_series_is_slogan,
     create_batch_requests, submit_batch, poll_batch,
@@ -44,7 +45,7 @@ from modules.ai_analyzer import (
     register_rate_limit_callback,
 )
 from modules.normalizer import (
-    normalize_all,
+    normalize_all, normalize_brand, MOVEMENT_MAKERS,
     stabilize_back_brand_override, is_multiword_english_phrase_candidate,
 )
 from modules.hand_count_policy import decide_hand_count
@@ -112,16 +113,35 @@ def setup_logging(verbose: bool = False) -> None:
 def apply_back_brand_stabilization(product: ProductImages, front_data: dict, back_data: dict) -> None:
     """裏蓋ブランド上書きの安定化（single/batch 共通）。
 
-    安定して正しい正面を、裏蓋の一回ノイズ読みが上書きするのを防ぐ。上書きが起きうる
-    ケースのみ裏蓋を再サンプルし、不安定なら back_data のブランド系キーを空にする。
-    ※再サンプルは通常APIのリアルタイム呼び出し（batchでは50%割引の対象外だが、
-      発火するのはレアケースのみでコスト影響は軽微）。
+    上書きが起きうるケース（正面≠裏蓋・裏蓋が非製造元）に限り、2段のガードを通す:
+      1) 二択照合: 裏蓋画像に実際に刻印されているのはどちらかを候補提示で確認
+         （一貫した幻覚読みの検出。例: BINLUN の裏蓋を KENTEX と誤読するケース）
+      2) 再サンプル多数決: 裏蓋を複数回読み直し、一致しなければ不採用
+         （ノイズ読みの検出。例: まれに ISSEY MIYAKE が混ざるケース）
+    どちらかで裏蓋が信頼できないと判定された場合、back_data のブランド系キーを空にして
+    正面を維持する。追い読みは通常APIのリアルタイム呼び出し（発火はレアケースのみ）。
     """
     logger = logging.getLogger(__name__)
     back_brand = back_data.get("back_brand_en", "")
     if not (back_brand and product.back_cover_image):
         return
+    fb = normalize_brand(front_data.get("brand_en", "") or "")
+    bb = normalize_brand(back_brand)
+    # 上書きが起きうるケース以外は何もしない（コストゼロ）
+    if not (fb and bb and fb != bb and bb not in MOVEMENT_MAKERS):
+        return
     try:
+        # 1) 二択照合（幻覚ガード）
+        choice = verify_back_brand_choice(product.back_cover_image, fb, bb)
+        if choice != "back":
+            logger.info(
+                f"[{product.product_id}] 裏蓋ブランド '{back_brand}' は刻印照合で確認できず不採用"
+                f"（照合結果={choice}、正面 '{fb}' を維持）"
+            )
+            for key in ("back_brand_en", "back_brand_kana", "back_series_en", "back_series_kana"):
+                back_data[key] = ""
+            return
+        # 2) 再サンプル多数決（ノイズガード・従来どおり）
         trust = stabilize_back_brand_override(
             front_data.get("brand_en", ""), back_brand,
             resample_fn=lambda: analyze_back_cover(product.back_cover_image).get("back_brand_en", ""),

@@ -1,10 +1,11 @@
-"""裏蓋ブランド上書きの安定化（stabilize_back_brand_override）のテスト"""
+"""裏蓋ブランド上書きの安定化（stabilize_back_brand_override / verify_back_brand_choice）のテスト"""
 
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import modules.ai_analyzer as ai
 from modules.normalizer import stabilize_back_brand_override
 
 
@@ -62,3 +63,45 @@ def test_majority_back_is_trusted():
     # 元1回 + 再サンプルで bb が過半数 → True
     fn, _ = _counter(["ELGIN", "ELGIN", "OTHER"])  # ELGIN=3/4 は過半数
     assert stabilize_back_brand_override("TAG HEUER", "ELGIN", fn, k=3) is True
+
+
+# === verify_back_brand_choice（二択照合・幻覚ガード） ===
+
+def _choice(monkeypatch, api_result):
+    """_call_api をスタブして verify_back_brand_choice を実行する。"""
+    if isinstance(api_result, Exception):
+        def fake(_prompt, _img):
+            raise api_result
+    else:
+        def fake(_prompt, _img):
+            return api_result
+    monkeypatch.setattr(ai, "_call_api", fake)
+    return ai.verify_back_brand_choice(Path("dummy.jpg"), "BINLUN", "KENTEX")
+
+
+def test_choice_answer_a_returns_front(monkeypatch):
+    assert _choice(monkeypatch, {"answer": "A", "engraved_text": "BINLUN"}) == "front"
+
+
+def test_choice_answer_b_returns_back(monkeypatch):
+    assert _choice(monkeypatch, {"answer": "B", "engraved_text": "KENTEX"}) == "back"
+
+
+def test_choice_answer_lowercase_is_normalized(monkeypatch):
+    assert _choice(monkeypatch, {"answer": " a "}) == "front"
+
+
+def test_choice_answer_c_returns_unknown(monkeypatch):
+    assert _choice(monkeypatch, {"answer": "C"}) == "unknown"
+
+
+def test_choice_garbage_answer_returns_unknown(monkeypatch):
+    assert _choice(monkeypatch, {"answer": "D: 不明"}) == "unknown"
+
+
+def test_choice_missing_answer_returns_unknown(monkeypatch):
+    assert _choice(monkeypatch, {"engraved_text": "MIYOTA"}) == "unknown"
+
+
+def test_choice_api_exception_returns_unknown(monkeypatch):
+    assert _choice(monkeypatch, RuntimeError("api down")) == "unknown"
