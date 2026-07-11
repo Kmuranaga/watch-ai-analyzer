@@ -400,18 +400,19 @@ def analyze_comment(image_paths: list[Path]) -> dict:
                 "hand_count_comment": "", "confidence": {}}
 
     prompt = _load_comment_prompt()
+    all_prefixes = []
     all_texts = []
     all_types = []
-    title_prefix = ""
     hand_count_comment = ""
 
     for image_path in image_paths:
         logger.info(f"コメントシール解析: {image_path}")
         result = _call_api(prompt, image_path)
 
+        # ＃コメントは複数枚あっても全て採用（連結）
         prefix = result.get("title_prefix", "")
         if prefix:
-            title_prefix = prefix
+            all_prefixes.append(prefix)
 
         text = result.get("abnormality_text", "")
         atype = result.get("abnormality_type", "")
@@ -425,7 +426,7 @@ def analyze_comment(image_paths: list[Path]) -> dict:
             hand_count_comment = hcc
 
     return {
-        "title_prefix": title_prefix,
+        "title_prefix": " ".join(all_prefixes) if all_prefixes else "",
         "abnormality_text": " / ".join(all_texts) if all_texts else "",
         "abnormality_type": ", ".join(all_types) if all_types else "",
         "hand_count_comment": hand_count_comment,
@@ -581,9 +582,7 @@ def create_batch_requests(products: list) -> list[dict]:
     custom_id（key）の命名規則:
       - "{product_id}__front"    → 正面画像解析
       - "{product_id}__back"     → 裏蓋画像解析
-      - "{product_id}__comment1" → コメントシール1
-      - "{product_id}__comment2" → コメントシール2
-      - "{product_id}__comment3" → コメントシール3（針数コメント等）
+      - "{product_id}__comment1"〜"__commentN" → コメントシール（最大 COMMENT_IMAGE_COUNT 枚）
     """
     requests = []
     front_prompt = _load_prompt("front_analysis.txt")
@@ -739,20 +738,21 @@ def parse_batch_results_for_product(
     front_data = batch_results.get(f"{product_id}__front", {})
     back_data = batch_results.get(f"{product_id}__back", {})
 
-    # コメントデータ: comment1〜comment3 を結合（針数コメントは最初の非空値を採用）
+    # コメントデータ: comment1〜commentN を結合（＃コメント複数枚は連結・針数は最初の非空値）
+    from config import COMMENT_IMAGE_COUNT
+    all_prefixes = []
     all_texts = []
     all_types = []
-    title_prefix = ""
     hand_count_comment = ""
     last_confidence = {}
 
-    for i in range(1, 4):  # comment1, comment2, comment3
+    for i in range(1, COMMENT_IMAGE_COUNT + 1):
         key = f"{product_id}__comment{i}"
         cdata = batch_results.get(key)
         if cdata:
             prefix = cdata.get("title_prefix", "")
             if prefix:
-                title_prefix = prefix
+                all_prefixes.append(prefix)
             text = cdata.get("abnormality_text", "")
             atype = cdata.get("abnormality_type", "")
             if text:
@@ -765,7 +765,7 @@ def parse_batch_results_for_product(
             last_confidence = cdata.get("confidence", {})
 
     comment_data = {
-        "title_prefix": title_prefix,
+        "title_prefix": " ".join(all_prefixes) if all_prefixes else "",
         "abnormality_text": " / ".join(all_texts) if all_texts else "",
         "abnormality_type": ", ".join(all_types) if all_types else "",
         "hand_count_comment": hand_count_comment,

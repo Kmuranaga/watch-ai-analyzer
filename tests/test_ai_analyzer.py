@@ -132,14 +132,23 @@ class TestParseBatchResultsForProduct:
         assert comment["title_prefix"] == ""
         assert comment["abnormality_text"] == ""
 
-    def test_title_prefix_from_later_comment(self):
-        """後のコメントの title_prefix が優先"""
+    def test_multiple_title_prefixes_concatenated(self):
+        """＃コメントが複数枚あっても全て連結して採用される"""
         batch_results = {
-            "prod1__comment1": {"title_prefix": "【ジャンク】"},
-            "prod1__comment2": {"title_prefix": "【中古】"},
+            "prod1__comment1": {"title_prefix": "稼働品"},
+            "prod1__comment3": {"title_prefix": "懐中時計"},
         }
         _, _, comment = parse_batch_results_for_product("prod1", batch_results)
-        assert comment["title_prefix"] == "【中古】"
+        assert comment["title_prefix"] == "稼働品 懐中時計"
+
+    def test_fifth_comment_parsed(self):
+        """5枚目のコメント（comment5）も解析対象になる"""
+        batch_results = {
+            "prod1__comment5": {"abnormality_text": "リューズ欠品", "hand_count_comment": "2針"},
+        }
+        _, _, comment = parse_batch_results_for_product("prod1", batch_results)
+        assert comment["abnormality_text"] == "リューズ欠品"
+        assert comment["hand_count_comment"] == "2針"
 
     def test_nonexistent_product(self):
         batch_results = {"other__front": {"brand_en": "SEIKO"}}
