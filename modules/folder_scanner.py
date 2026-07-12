@@ -17,9 +17,7 @@
   7枚目: 裏蓋斜め
   8枚目: 裏蓋 ★AI解析
   9枚目: 裏蓋正面
-  10枚目: コメントシール1 ★AI解析（存在時のみ）
-  11枚目: コメントシール2 ★AI解析（存在時のみ）
-  12枚目: コメントシール3 ★AI解析（存在時のみ・針数コメント等）
+  10〜14枚目: コメントシール ★AI解析（存在時のみ・最大5枚。＃コメント/状態異常/針数）
 """
 
 import logging
@@ -27,13 +25,13 @@ import re
 from pathlib import Path
 from dataclasses import dataclass, field
 
-from config import SUPPORTED_IMAGE_FORMATS
+from config import SUPPORTED_IMAGE_FORMATS, IDX_COMMENT_START, COMMENT_IMAGE_COUNT
 
 logger = logging.getLogger(__name__)
 
 # 画像枚数の期待値（バーコードなし）
 IMAGES_MIN = 9   # 商品画像9枚（異常報告なし）
-IMAGES_MAX = 12  # 商品画像9枚 + コメントシール最大3枚
+IMAGES_MAX = IDX_COMMENT_START + COMMENT_IMAGE_COUNT  # 商品画像9枚 + コメントシール最大N枚
 
 
 @dataclass
@@ -61,20 +59,17 @@ class ProductImages:
 
     @property
     def comment_images(self) -> list[Path]:
-        """10-12枚目: コメントシール画像（存在する場合のみ）"""
-        result = []
-        if len(self.images) > 9:
-            result.append(self.images[9])
-        if len(self.images) > 10:
-            result.append(self.images[10])
-        if len(self.images) > 11:
-            result.append(self.images[11])
-        return result
+        """10枚目〜: コメントシール画像（存在する場合のみ・最大 COMMENT_IMAGE_COUNT 枚）"""
+        return [
+            self.images[i]
+            for i in range(IDX_COMMENT_START, IDX_COMMENT_START + COMMENT_IMAGE_COUNT)
+            if len(self.images) > i
+        ]
 
     @property
     def has_comments(self) -> bool:
         """コメントシール画像が存在するか"""
-        return len(self.images) > 9
+        return len(self.images) > IDX_COMMENT_START
 
     @property
     def image_count(self) -> int:

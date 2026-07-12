@@ -148,18 +148,27 @@ def test_decide_digital_comment():
     assert decide_hand_count("", "デジタル") == ("デジタル", "コメント", "デジタル")
 
 
-# === folder_scanner: 12枚対応 ===
+# === folder_scanner: 14枚（コメント最大5枚）対応 ===
 
-def test_folder_scanner_supports_12_images(tmp_path, caplog):
-    assert IMAGES_MAX == 12
-    for i in range(12):
+def test_folder_scanner_supports_14_images(tmp_path, caplog):
+    assert IMAGES_MAX == 14
+    for i in range(14):
         (tmp_path / f"{i+1:03d}.jpg").write_bytes(b"x")
     with caplog.at_level("WARNING"):
         product = _scan_product_folder(tmp_path, "1234567_TEST")
-    assert product.image_count == 12
-    assert len(product.comment_images) == 3
-    assert product.comment_images[2] == tmp_path / "012.jpg"
+    assert product.image_count == 14
+    assert len(product.comment_images) == 5
+    assert product.comment_images[0] == tmp_path / "010.jpg"
+    assert product.comment_images[4] == tmp_path / "014.jpg"
     assert "画像枚数超過" not in caplog.text
+
+
+def test_folder_scanner_partial_comments(tmp_path):
+    """コメントが3枚（12枚構成）でも従来どおり全て取得される"""
+    for i in range(12):
+        (tmp_path / f"{i+1:03d}.jpg").write_bytes(b"x")
+    product = _scan_product_folder(tmp_path, "1234567_TEST")
+    assert len(product.comment_images) == 3
 
 
 def test_comment_images_two_images_unchanged():
@@ -183,6 +192,22 @@ def test_analyze_comment_picks_hand_count_from_any_image(monkeypatch):
     assert out["hand_count_comment"] == "2針"
     # 異常コメントと針数コメントは共存する（針数カードは異常内容に混入しない）
     assert out["abnormality_text"] == "リューズ固着"
+
+
+def test_analyze_comment_concatenates_multiple_prefixes(monkeypatch):
+    """＃コメントが複数枚あっても全て連結される（状態異常・針数と共存）"""
+    monkeypatch.setattr(ai, "_load_comment_prompt", lambda: "PROMPT")
+    seq = iter([
+        {"title_prefix": "稼働品", "abnormality_text": "", "abnormality_type": "", "hand_count_comment": ""},
+        {"title_prefix": "懐中時計", "abnormality_text": "", "abnormality_type": "", "hand_count_comment": ""},
+        {"title_prefix": "", "abnormality_text": "ベルト欠品", "abnormality_type": "ベルト", "hand_count_comment": ""},
+        {"title_prefix": "", "abnormality_text": "", "abnormality_type": "", "hand_count_comment": "3針"},
+    ])
+    monkeypatch.setattr(ai, "_call_api", lambda prompt, path, extra_images=None: next(seq))
+    out = ai.analyze_comment([Path(f"c{i}.jpg") for i in range(4)])
+    assert out["title_prefix"] == "稼働品 懐中時計"
+    assert out["abnormality_text"] == "ベルト欠品"
+    assert out["hand_count_comment"] == "3針"
 
 
 def test_analyze_comment_empty_hand_count(monkeypatch):
