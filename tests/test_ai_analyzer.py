@@ -141,6 +141,16 @@ class TestParseBatchResultsForProduct:
         _, _, comment = parse_batch_results_for_product("prod1", batch_results)
         assert comment["title_prefix"] == "稼働品 懐中時計"
 
+    def test_single_image_multiple_prefixes_preserved(self):
+        """1枚の画像内に複数＃がある場合（AIがスペース連結して返す）、その連結を保持し、
+        他カードの＃ともさらに連結される（複数枚対応は維持）"""
+        batch_results = {
+            "prod1__comment1": {"title_prefix": "稼働品 懐中時計"},
+            "prod1__comment2": {"title_prefix": "美品"},
+        }
+        _, _, comment = parse_batch_results_for_product("prod1", batch_results)
+        assert comment["title_prefix"] == "稼働品 懐中時計 美品"
+
     def test_fifth_comment_parsed(self):
         """5枚目のコメント（comment5）も解析対象になる"""
         batch_results = {
