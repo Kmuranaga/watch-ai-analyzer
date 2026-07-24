@@ -31,12 +31,12 @@ import config
 from config import DEFAULT_INPUT_DIR, MAX_CONCURRENT_PRODUCTS, CSV_ENCODING
 from modules.folder_scanner import scan_folder
 from modules.ai_analyzer import analyze_front, analyze_back_cover, analyze_comment, register_rate_limit_callback
-from modules.normalizer import normalize_all
+from modules.normalizer import normalize_all, set_known_brands
 from modules.hand_count_policy import decide_hand_count, title_hand_count_for
 from modules.category_mapper import CategoryMapper
 from modules.title_generator import generate_title
 from modules.csv_writer import ProductResult, COLUMNS, write_csv, write_excel
-from main import apply_back_brand_stabilization, apply_model_number_recovery, apply_series_slogan_filter
+from main import apply_model_number_recovery, apply_series_slogan_filter
 
 app = Flask(__name__)
 
@@ -110,7 +110,10 @@ register_rate_limit_callback(_on_rate_limit)
 
 
 def get_mapper() -> CategoryMapper:
-    return CategoryMapper()
+    mapper = CategoryMapper()
+    # 裏蓋ブランド補完のホワイトリスト（mapping.xlsx 登録ブランドのみ補完可）
+    set_known_brands(mapper.known_brand_names())
+    return mapper
 
 
 def process_product_with_progress(
@@ -209,7 +212,6 @@ def process_product_with_progress(
                 })
 
     # 条件付きフォローアップ（CLIと共通のヘルパー。発火はレアケースのみ）
-    apply_back_brand_stabilization(product, front_data, back_data)
     apply_model_number_recovery(product, back_data)
 
     # データ正規化

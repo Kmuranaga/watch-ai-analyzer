@@ -360,6 +360,20 @@ class CategoryMapper:
 
         return ""
 
+    def known_brand_names(self) -> set[str]:
+        """mapping.xlsx に登録されている全ブランド名（正規名＋別名、大文字）を返す。
+
+        裏蓋刻印からのブランド補完ホワイトリスト（normalizer.set_known_brands）用。
+        ケースメーカー刻印等の「ブランドではない文字列」を採用しないための基準になる。
+        """
+        names: set[str] = set(self.brand_fallback_map)
+        names.update(b for b, _ in self.brand_series_map)
+        names.update(b for b, _ in self.model_number_map)
+        names.update(self.brand_alias_map)           # 別名
+        names.update(self.brand_alias_map.values())  # 別名の正規名
+        names.discard("")
+        return names
+
     def _resolve_brand(self, brand: str) -> str:
         """ブランド別名を正規名に変換する。別名でなければそのまま返す。"""
         if brand in self.brand_alias_map:

@@ -114,19 +114,11 @@ def normalize_series(series: str, brand: str = "") -> str:
     return s
 
 
-# === ムーブメント製造元名（製品ブランドではない）===
-# 裏蓋にはこれらの製造元名が刻印されることがあるが、製品ブランドとは限らない。
-# （正規化後の大文字表記で照合する）
-MOVEMENT_MAKERS = {
-    "CITIZEN", "MIYOTA", "SEIKO", "SII", "TMI", "HATTORI",
-    "ORIENT", "EPSON", "RONDA", "ETA", "ISA", "JAPAN",
-    "STP",  # Swiss Technology Production（ETA系の汎用ムーブメント製造元）
-}
-
 # === ケース製造元・裏蓋材質の刻印 ===
 # ヴィンテージ国産時計の裏蓋には □囲みの STAR 等ケース製造元の刻印が打刻される。
-# 実在する刻印のため既存の二択照合・再サンプルガードでは弾けないが、
-# 製品ブランドではないので、正面の上書きにも表が空の場合の補完にも使わない。
+# 製品ブランドではないので、ブランドの補完にもシリーズの補完にも使わない。
+# （ブランド補完は既知ブランド・ホワイトリストでも守られるが、シリーズ側の
+# 混入防止はこのリストが担うため whitelist 導入後も必要）
 CASE_MAKERS = {
     "STAR",             # □STAR: ケースメーカー刻印（CITIZEN/SEIKO 等のケースに打刻）
     "EVERBRIGHT",       # EVERBRIGHT BACK: 裏蓋材質表記（AIは通常こちらに切り出す）
@@ -136,25 +128,42 @@ CASE_MAKERS = {
 }
 
 
+# === 裏蓋補完に使ってよい既知ブランド（mapping.xlsx 由来）===
+# 起動時に set_known_brands(mapper.known_brand_names()) で登録する。
+# 未登録（空）のままなら裏蓋からのブランド補完は一切行わない（安全側）。
+_KNOWN_BRANDS: set[str] = set()
+
+
+def set_known_brands(brands) -> None:
+    """裏蓋刻印からのブランド補完で採用してよい既知ブランド名を登録する。
+
+    mapping.xlsx のブランド名・別名（CategoryMapper.known_brand_names()）を
+    起動時に渡す想定。正規化（大文字化）して保持する。
+    """
+    global _KNOWN_BRANDS
+    _KNOWN_BRANDS = {normalize_brand(b) for b in brands if b and str(b).strip()}
+
+
 def reconcile_brand(front_brand: str, back_brand: str, front_conf=None):
     """
     正面（文字盤）ブランドと裏蓋刻印ブランドを整合し、採用ブランドと採用元を返す。
 
-    判定順（裏蓋刻印ブランドを整合の基準にする）:
-      1. fb,bb がともにあり fb≠bb で bb が製造元（MOVEMENT_MAKERS）またはケースメーカー刻印（CASE_MAKERS）
-         → fb（裏蓋は部品製造元名であって製品ブランドではない。例: RONSON/CITIZEN製造、CITIZEN/□STARケース）
-      2. fb,bb がともにあり fb≠bb で bb が製造元・ケースメーカーでない実ブランド
-         → bb（裏蓋の実ブランド刻印を採用。正面は高確信でも誤読しうる。例: ELGINがTAG HEUERと誤読）
-      3. fb がある → fb（裏蓋が空 or fb==bb）
-      4. fb が空で bb がある → bb（表が判読不可→裏蓋で補完）。
-         ただし bb がケースメーカー刻印なら製品ブランドではないため補完せず ""
-      5. どちらも空 → ""
+    文字盤最優先仕様（2026-07-24 クライアント合意の仕様変更）:
+      1. fb がある → 常に fb（裏蓋刻印による上書きは行わない）
+      2. fb が空で bb がある → bb が既知ブランド（set_known_brands 登録分）かつ
+         ケースメーカー刻印（CASE_MAKERS）でない場合のみ bb で補完
+         （裏蓋にはケースメーカー・ベルトメーカー・シリーズ名等、製品ブランドで
+         ない文字が刻印されることがあり、未知の文字列は採用しない。例: □STAR,
+         ELMITEX, Flagship）
+      3. どちらも採用できない → ""（人手確認へ）
+
+    旧仕様にあった「裏蓋の実ブランド刻印による正面誤読の是正」（例: ELGIN）は
+    この仕様変更で廃止された。文字盤の誤読はそのまま出力され、目視確認で修正する。
 
     Args:
         front_brand: 正面ブランド（生文字列可）
         back_brand: 裏蓋刻印ブランド（生文字列可）
-        front_conf: 正面ブランドの confidence。現ロジックでは判定に使用しないが、
-                    後方互換のため引数は受け付ける（製造元ガードで誤採用を防ぐ方式に変更）。
+        front_conf: 後方互換のため受け付けるが判定には使用しない。
 
     Returns:
         (brand, source): brand は正規化済みブランド、
@@ -163,62 +172,16 @@ def reconcile_brand(front_brand: str, back_brand: str, front_conf=None):
     fb = normalize_brand(front_brand) if front_brand else ""
     bb = normalize_brand(back_brand) if back_brand else ""
 
-    if fb and bb and fb != bb:
-        # 1. 裏蓋が製造元名・ケースメーカー刻印 → 文字盤を採用（RONSON/CITIZEN, CITIZEN/□STAR 等）
-        if bb in MOVEMENT_MAKERS or bb in CASE_MAKERS:
-            return fb, "front"
-        # 2. 裏蓋が製造元・ケースメーカーでない実ブランド → 裏蓋を採用
-        #    （正面は高確信でも誤読しうるため、製造元でない刻印ブランドを優先）
-        return bb, "back"
-
-    # 3. 文字盤優先（裏蓋が空、または fb==bb のケース）
+    # 1. 文字盤最優先: 文字盤で読めていれば裏蓋では上書きしない
     if fb:
         return fb, "front"
 
-    # 4. 表が判読不可 → 裏蓋で補完（ケースメーカー刻印は製品ブランドではないため補完しない）
-    if bb and bb not in CASE_MAKERS:
+    # 2. 表が判読不可 → 既知ブランドの裏蓋刻印のみ補完に使う
+    if bb and bb in _KNOWN_BRANDS and bb not in CASE_MAKERS:
         return bb, "back"
 
-    # 5. どちらも空
+    # 3. 採用できるブランドなし
     return "", ""
-
-
-def stabilize_back_brand_override(front_brand: str, back_brand: str,
-                                  resample_fn, k: int = 3) -> bool:
-    """裏蓋ブランドで正面を上書きしてよいか（裏蓋が安定しているか）を判定する。
-
-    背景: reconcile_brand は「正面≠裏蓋 かつ 裏蓋が非製造元ブランド」のとき裏蓋を採用する
-    （例: ELGINがTAG HEUERと誤読される正面を裏蓋ELGINで是正）。しかしこのルールは、
-    安定して正しい正面を、裏蓋の一回ノイズ読み（例: 2924323で稀に出る ISSEY MIYAKE）で
-    誤って上書きしうる。confidence は信頼できない（空欄でも0.8〜0.95）ため、裏蓋を
-    再サンプルして安定性で判定する。
-
-    上書きが起きうるケース（正面・裏蓋ともにあり、異なり、裏蓋が非製造元）のときだけ
-    resample_fn を k 回呼んで裏蓋ブランドを取り直し、元の1回と合わせて同一ブランドが
-    過半数なら True（安定＝上書き採用）、そうでなければ False（ノイズ＝正面を維持）。
-    上書きが起きないケースでは resample_fn を呼ばず True を返す（追加コストなし）。
-
-    Args:
-        front_brand: 正面ブランド（生文字列可）
-        back_brand: 裏蓋ブランド（生文字列可）
-        resample_fn: 引数なしで裏蓋ブランド文字列を返す関数（追加サンプル取得用）
-        k: 追加サンプル数
-
-    Returns:
-        True なら裏蓋採用を信頼してよい、False なら裏蓋はノイズとして正面を維持すべき。
-    """
-    fb = normalize_brand(front_brand) if front_brand else ""
-    bb = normalize_brand(back_brand) if back_brand else ""
-
-    # 上書きが起きうるケースでなければ再サンプルせず信頼（コストなし）
-    # （ケースメーカー刻印は reconcile_brand 側で上書き対象外のため再サンプル不要）
-    if not (fb and bb and fb != bb
-            and bb not in MOVEMENT_MAKERS and bb not in CASE_MAKERS):
-        return True
-
-    samples = [bb] + [normalize_brand(resample_fn() or "") for _ in range(k)]
-    same = sum(1 for s in samples if s == bb)
-    return same * 2 > len(samples)  # 厳密な過半数
 
 
 def _reconcile_brand_fields(result: dict) -> None:
