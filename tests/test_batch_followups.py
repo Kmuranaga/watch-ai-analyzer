@@ -100,6 +100,22 @@ def test_stable_back_brand_adopted_in_batch(tmp_path, monkeypatch):
     assert row["ブランド英字"] == "ELGIN"
 
 
+def test_case_maker_back_brand_rejected_without_followup_in_batch(tmp_path, monkeypatch):
+    # □STAR型: 正面CITIZEN(正) vs 裏蓋STAR(ケースメーカー刻印・実在で安定)。
+    # 刻印は本物なので二択照合・再サンプルでは弾けない → リスト側で上書き対象外とし、
+    # 追い読みAPIも一切呼ばれないこと。
+    row, calls = _run_batch(
+        tmp_path, monkeypatch,
+        front={"brand_en": "CITIZEN", "hand_count": "3針"},
+        back={"back_brand_en": "STAR", "model_number": "SENS51801A-Y"},
+        resample_brand="STAR",  # 仮に呼ばれれば安定してSTARが返る想定
+        choice="back",          # 仮に呼ばれれば「裏蓋に実在」と答える想定
+    )
+    assert row["ブランド英字"] == "CITIZEN"
+    assert calls["choice"] == 0
+    assert calls["resample"] == 0
+
+
 def test_hallucinated_back_brand_rejected_in_batch(tmp_path, monkeypatch):
     # BINLUN型: 正面BINLUN(正・conf1.0) vs 裏蓋KENTEX(一貫した幻覚読み)。
     # 再サンプル多数決は「一貫した」幻覚を通してしまうが、二択照合が

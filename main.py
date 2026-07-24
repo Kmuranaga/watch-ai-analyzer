@@ -45,7 +45,7 @@ from modules.ai_analyzer import (
     register_rate_limit_callback,
 )
 from modules.normalizer import (
-    normalize_all, normalize_brand, MOVEMENT_MAKERS,
+    normalize_all, normalize_brand, MOVEMENT_MAKERS, CASE_MAKERS,
     stabilize_back_brand_override, is_multiword_english_phrase_candidate,
 )
 from modules.hand_count_policy import decide_hand_count
@@ -128,7 +128,8 @@ def apply_back_brand_stabilization(product: ProductImages, front_data: dict, bac
     fb = normalize_brand(front_data.get("brand_en", "") or "")
     bb = normalize_brand(back_brand)
     # 上書きが起きうるケース以外は何もしない（コストゼロ）
-    if not (fb and bb and fb != bb and bb not in MOVEMENT_MAKERS):
+    if not (fb and bb and fb != bb
+            and bb not in MOVEMENT_MAKERS and bb not in CASE_MAKERS):
         return
     try:
         # 1) 二択照合（幻覚ガード）

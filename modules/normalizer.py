@@ -123,18 +123,31 @@ MOVEMENT_MAKERS = {
     "STP",  # Swiss Technology Production（ETA系の汎用ムーブメント製造元）
 }
 
+# === ケース製造元・裏蓋材質の刻印 ===
+# ヴィンテージ国産時計の裏蓋には □囲みの STAR 等ケース製造元の刻印が打刻される。
+# 実在する刻印のため既存の二択照合・再サンプルガードでは弾けないが、
+# 製品ブランドではないので、正面の上書きにも表が空の場合の補完にも使わない。
+CASE_MAKERS = {
+    "STAR",             # □STAR: ケースメーカー刻印（CITIZEN/SEIKO 等のケースに打刻）
+    "EVERBRIGHT",       # EVERBRIGHT BACK: 裏蓋材質表記（AIは通常こちらに切り出す）
+    "EVERBRIGHT BACK",  # 同上の刻印生値バリアント
+    # 注意: 部分一致にすると実在シリーズ（SEVEN STAR, THREE STAR 等）を誤って
+    # 消すため、必ず完全一致（リテラル追加）で拡張すること
+}
+
 
 def reconcile_brand(front_brand: str, back_brand: str, front_conf=None):
     """
     正面（文字盤）ブランドと裏蓋刻印ブランドを整合し、採用ブランドと採用元を返す。
 
     判定順（裏蓋刻印ブランドを整合の基準にする）:
-      1. fb,bb がともにあり fb≠bb で bb が製造元（MOVEMENT_MAKERS）
-         → fb（裏蓋は製造元名であって製品ブランドではない。例: RONSON/CITIZEN製造、SEIKO/STP）
-      2. fb,bb がともにあり fb≠bb で bb が製造元でない実ブランド
+      1. fb,bb がともにあり fb≠bb で bb が製造元（MOVEMENT_MAKERS）またはケースメーカー刻印（CASE_MAKERS）
+         → fb（裏蓋は部品製造元名であって製品ブランドではない。例: RONSON/CITIZEN製造、CITIZEN/□STARケース）
+      2. fb,bb がともにあり fb≠bb で bb が製造元・ケースメーカーでない実ブランド
          → bb（裏蓋の実ブランド刻印を採用。正面は高確信でも誤読しうる。例: ELGINがTAG HEUERと誤読）
       3. fb がある → fb（裏蓋が空 or fb==bb）
-      4. fb が空で bb がある → bb（表が判読不可→裏蓋で補完）
+      4. fb が空で bb がある → bb（表が判読不可→裏蓋で補完）。
+         ただし bb がケースメーカー刻印なら製品ブランドではないため補完せず ""
       5. どちらも空 → ""
 
     Args:
@@ -151,10 +164,10 @@ def reconcile_brand(front_brand: str, back_brand: str, front_conf=None):
     bb = normalize_brand(back_brand) if back_brand else ""
 
     if fb and bb and fb != bb:
-        # 1. 裏蓋が製造元名 → 文字盤を採用（RONSON/CITIZEN, SEIKO/STP 等）
-        if bb in MOVEMENT_MAKERS:
+        # 1. 裏蓋が製造元名・ケースメーカー刻印 → 文字盤を採用（RONSON/CITIZEN, CITIZEN/□STAR 等）
+        if bb in MOVEMENT_MAKERS or bb in CASE_MAKERS:
             return fb, "front"
-        # 2. 裏蓋が製造元でない実ブランド → 裏蓋を採用
+        # 2. 裏蓋が製造元・ケースメーカーでない実ブランド → 裏蓋を採用
         #    （正面は高確信でも誤読しうるため、製造元でない刻印ブランドを優先）
         return bb, "back"
 
@@ -162,8 +175,8 @@ def reconcile_brand(front_brand: str, back_brand: str, front_conf=None):
     if fb:
         return fb, "front"
 
-    # 4. 表が判読不可 → 裏蓋で補完
-    if bb:
+    # 4. 表が判読不可 → 裏蓋で補完（ケースメーカー刻印は製品ブランドではないため補完しない）
+    if bb and bb not in CASE_MAKERS:
         return bb, "back"
 
     # 5. どちらも空
@@ -198,7 +211,9 @@ def stabilize_back_brand_override(front_brand: str, back_brand: str,
     bb = normalize_brand(back_brand) if back_brand else ""
 
     # 上書きが起きうるケースでなければ再サンプルせず信頼（コストなし）
-    if not (fb and bb and fb != bb and bb not in MOVEMENT_MAKERS):
+    # （ケースメーカー刻印は reconcile_brand 側で上書き対象外のため再サンプル不要）
+    if not (fb and bb and fb != bb
+            and bb not in MOVEMENT_MAKERS and bb not in CASE_MAKERS):
         return True
 
     samples = [bb] + [normalize_brand(resample_fn() or "") for _ in range(k)]
@@ -214,6 +229,16 @@ def _reconcile_brand_fields(result: dict) -> None:
     - シリーズ・かなは採用元に合わせて front/back を採用（採用元が空なら他方で補完）。
     - 裏蓋用の一時キー（back_*）は出力に残さないよう pop する。
     """
+    # ケースメーカー・材質刻印（□STAR, EVERBRIGHT 等）は製品ブランドでもシリーズでもないため、
+    # ブランド整合・補完に入る前に裏蓋読み取り値から除外する
+    # （例: 2959931 の「EVERBRIGHT BACK」が back_series 経由でタイトルに混入するのを防ぐ）
+    if normalize_brand(result.get("back_brand_en", "") or "") in CASE_MAKERS:
+        result["back_brand_en"] = ""
+        result["back_brand_kana"] = ""
+    if normalize_brand(result.get("back_series_en", "") or "") in CASE_MAKERS:
+        result["back_series_en"] = ""
+        result["back_series_kana"] = ""
+
     front_brand = result.get("brand_en", "")
     back_brand = result.get("back_brand_en", "")
     front_conf = (result.get("confidence") or {}).get("brand")
