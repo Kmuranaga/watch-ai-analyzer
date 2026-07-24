@@ -20,7 +20,16 @@ from modules.normalizer import (
     normalize_series,
     normalize_all,
     reconcile_brand,
+    set_known_brands,
 )
+
+
+@pytest.fixture()
+def known_brands():
+    """mapping.xlsx 登録ブランド相当のホワイトリストを設定する（テスト後にクリア）"""
+    set_known_brands({"ELGIN", "CITIZEN", "SEIKO", "LONGINES", "OMEGA", "TAG HEUER"})
+    yield
+    set_known_brands(set())
 
 
 class TestNormalizeText:
@@ -447,58 +456,62 @@ class TestNormalizeAll:
 
 
 class TestReconcileBrand:
-    """裏蓋ブランド整合 reconcile_brand 単体テスト"""
+    """ブランド整合 reconcile_brand 単体テスト（文字盤最優先仕様）
 
-    def test_front_product_back_movement_maker(self):
+    仕様変更（2026-07-24 クライアント合意）: 文字盤で読めたブランドは裏蓋刻印で
+    上書きしない。裏蓋は文字盤が判読不可の場合の補完のみで、採用は既知ブランド
+    （mapping.xlsx 登録分 = set_known_brands 登録分）に限定する。
+    """
+
+    # === ルール1: 文字盤があれば常に文字盤 ===
+
+    def test_front_wins_over_back_movement_maker(self):
         """RONSON(front) + CITIZEN(back, 製造元) → RONSON"""
         brand, source = reconcile_brand("RONSON", "CITIZEN")
         assert brand == "RONSON"
         assert source == "front"
 
-    def test_front_empty_back_real_brand(self):
-        """front空 + ELGIN(back) → ELGIN（仕様1: 表判読不可の補完）"""
-        brand, source = reconcile_brand("", "ELGIN")
-        assert brand == "ELGIN"
-        assert source == "back"
+    def test_front_wins_over_back_real_brand(self, known_brands):
+        """TAG HEUER(front) + ELGIN(back, 既知ブランド) → front を維持
+
+        仕様変更点: 旧仕様では裏蓋の実ブランドが正面を是正していたが、
+        文字盤最優先の合意により、既知ブランド刻印でも上書きしない。
+        """
+        brand, source = reconcile_brand("TAG HEUER", "ELGIN", front_conf=0.98)
+        assert brand == "TAG HEUER"
+        assert source == "front"
+
+    def test_front_wins_even_with_low_conf(self, known_brands):
+        """front低確信(0.4)でも文字盤を採用（confidence は判定に使わない）"""
+        brand, source = reconcile_brand("OMEGA", "ELGIN", front_conf=0.4)
+        assert brand == "OMEGA"
+        assert source == "front"
+
+    def test_front_wins_over_case_maker_star(self):
+        """CITIZEN(front) + STAR(back, ケースメーカー刻印) → front を維持
+
+        実データ: 2959928/2959931/2959883/2959969（□STAR刻印）。
+        """
+        brand, source = reconcile_brand("CITIZEN", "STAR", front_conf=1.0)
+        assert brand == "CITIZEN"
+        assert source == "front"
+
+    def test_front_wins_over_band_maker(self, known_brands):
+        """OMEGA(front) + ELMITEX(back, ベルトメーカー刻印) → front を維持（実データ 2960103）"""
+        brand, source = reconcile_brand("OMEGA", "ELMITEX")
+        assert brand == "OMEGA"
+        assert source == "front"
+
+    def test_front_wins_over_back_series_engraving(self, known_brands):
+        """LONGINES(front) + FLAGSHIP(back, シリーズ刻印) → front を維持（実データ 2968274）"""
+        brand, source = reconcile_brand("LONGINES", "FLAGSHIP")
+        assert brand == "LONGINES"
+        assert source == "front"
 
     def test_front_equals_back(self):
         """front=back（一致）→ そのブランド"""
         brand, source = reconcile_brand("SEIKO", "seiko")
         assert brand == "SEIKO"
-        assert source == "front"
-
-    def test_front_low_conf_back_real_brand(self):
-        """front低確信(0.4) + 別の実ブランド(back) → back"""
-        brand, source = reconcile_brand("OMEGA", "ELGIN", front_conf=0.4)
-        assert brand == "ELGIN"
-        assert source == "back"
-
-    def test_front_high_conf_back_real_brand(self):
-        """front高確信 + 別の実ブランド(back, 製造元でない) → back（裏蓋の実ブランドを優先）
-
-        正面が高確信でも誤読しうる（例: ELGINをTAG HEUERと誤読）ため、
-        製造元名でない裏蓋刻印ブランドは confidence に依らず採用する。
-        """
-        brand, source = reconcile_brand("TAG HEUER", "ELGIN", front_conf=0.98)
-        assert brand == "ELGIN"
-        assert source == "back"
-
-    def test_high_conf_front_back_is_movement_maker(self):
-        """front高確信 + 裏蓋が製造元(STP) → front を維持（誤採用を防ぐ製造元ガード）"""
-        brand, source = reconcile_brand("SEIKO", "STP", front_conf=0.99)
-        assert brand == "SEIKO"
-        assert source == "front"
-
-    def test_both_empty(self):
-        """両方空 → ''"""
-        brand, source = reconcile_brand("", "")
-        assert brand == ""
-        assert source == ""
-
-    def test_low_conf_but_back_is_movement_maker(self):
-        """front低確信でも裏蓋が製造元なら front を維持（RONSON対策優先）"""
-        brand, source = reconcile_brand("RONSON", "CITIZEN", front_conf=0.4)
-        assert brand == "RONSON"
         assert source == "front"
 
     def test_front_only(self):
@@ -507,24 +520,35 @@ class TestReconcileBrand:
         assert brand == "CASIO"
         assert source == "front"
 
-    def test_back_is_case_maker_star(self):
-        """CITIZEN(front, 高確信) + STAR(back, ケースメーカー刻印) → front を維持
+    # === ルール2: 文字盤が空のときのみ、既知ブランドの裏蓋刻印で補完 ===
 
-        ヴィンテージ国産時計の裏蓋には □囲みの STAR などケース製造元の刻印がある
-        （実データ: 2959928 CITIZEN Seine / 2959931 CITIZEN / 2959883 SEIKO）。
-        製品ブランドではないため上書きに使わない。
-        """
-        brand, source = reconcile_brand("CITIZEN", "STAR", front_conf=1.0)
-        assert brand == "CITIZEN"
-        assert source == "front"
+    def test_back_fills_when_front_empty_and_known(self, known_brands):
+        """front空 + ELGIN(back, 既知ブランド) → ELGIN（表判読不可の補完）"""
+        brand, source = reconcile_brand("", "ELGIN")
+        assert brand == "ELGIN"
+        assert source == "back"
 
-    def test_back_case_maker_not_adopted_when_front_empty(self):
-        """front空 + STAR(back, ケースメーカー刻印) → 補完にも使わず空のまま
+    def test_back_unknown_brand_not_adopted_when_front_empty(self, known_brands):
+        """front空 + ELMITEX(back, 未登録) → 補完せず空欄（人手確認へ）"""
+        brand, source = reconcile_brand("", "ELMITEX")
+        assert brand == ""
+        assert source == ""
 
-        製造元名（CITIZEN等）は表が空なら補完に使うが、ケースメーカー刻印は
-        製品ブランドであることがないため空欄とし、人手確認に回す。
-        """
+    def test_back_case_maker_not_adopted_when_front_empty(self, known_brands):
+        """front空 + STAR(back, ケースメーカー刻印) → 補完せず空欄"""
         brand, source = reconcile_brand("", "STAR")
+        assert brand == ""
+        assert source == ""
+
+    def test_back_not_adopted_when_no_known_brands_registered(self):
+        """ホワイトリスト未登録（起動時に set_known_brands 未呼び出し）なら補完しない"""
+        brand, source = reconcile_brand("", "ELGIN")
+        assert brand == ""
+        assert source == ""
+
+    def test_both_empty(self):
+        """両方空 → ''"""
+        brand, source = reconcile_brand("", "")
         assert brand == ""
         assert source == ""
 
@@ -609,8 +633,28 @@ class TestNormalizeAllReconcile:
         assert result["series_en"] == "SEVEN STAR"
         assert result["series_kana"] == "セブンスター"
 
-    def test_back_brand_supplements_when_front_empty(self):
-        """front空 + ELGIN(back) → brand_en=ELGIN、kana/series も back を採用"""
+    def test_dial_first_front_kept_over_known_back_brand(self, known_brands):
+        """LONGINES(front) + FLAGSHIP刻印(back) → 文字盤を維持（実データ 2968274）
+
+        文字盤最優先仕様: 既知/未知に関わらず、文字盤が読めていれば裏蓋で上書きしない。
+        """
+        merged = {
+            "brand_en": "LONGINES",
+            "brand_kana": "ロンジン",
+            "series_en": "",
+            "series_kana": "",
+            "back_brand_en": "FLAGSHIP",
+            "back_brand_kana": "フラッグシップ",
+            "back_series_en": "",
+            "back_series_kana": "",
+            "confidence": {"brand": 1.0},
+        }
+        result = normalize_all(merged)
+        assert result["brand_en"] == "LONGINES"
+        assert result["brand_kana"] == "ロンジン"
+
+    def test_back_brand_supplements_when_front_empty(self, known_brands):
+        """front空 + ELGIN(back, 既知ブランド) → brand_en=ELGIN、kana/series も back を採用"""
         merged = {
             "brand_en": "",
             "brand_kana": "",
@@ -629,21 +673,23 @@ class TestNormalizeAllReconcile:
         assert result["series_kana"] == "デラックス"
         assert "back_brand_en" not in result
 
-    def test_low_conf_front_overridden_by_back(self):
-        """front低確信 + 実ブランド裏蓋 → 裏蓋採用"""
+    def test_low_conf_front_kept_over_back(self, known_brands):
+        """front低確信でも文字盤を採用（文字盤最優先。confidence は判定に使わない）"""
         merged = {
             "brand_en": "OMEGA",
             "back_brand_en": "ELGIN",
             "confidence": {"brand": 0.4},
         }
         result = normalize_all(merged)
-        assert result["brand_en"] == "ELGIN"
+        assert result["brand_en"] == "OMEGA"
         assert "back_brand_en" not in result
 
-    def test_high_conf_front_overridden_by_back_real_brand(self):
-        """front高確信誤読(TAG HEUER) + 実ブランド裏蓋(ELGIN) → 裏蓋ELGINを採用
+    def test_front_kept_over_back_real_brand(self, known_brands):
+        """front(TAG HEUER) + 実ブランド裏蓋(ELGIN) → 文字盤を維持
 
-        実データ(2916676): 正面をTAG HEUER 0.98で誤読、裏蓋ELGINで是正されるケース。
+        仕様変更（2026-07-24 クライアント合意・文字盤最優先）: 旧仕様では
+        裏蓋ELGINが正面誤読を是正していたが（実データ2916676）、上書きは廃止。
+        文字盤の誤読はそのまま出力され、目視確認で修正する運用となる。
         """
         merged = {
             "brand_en": "TAG HEUER",
@@ -652,8 +698,7 @@ class TestNormalizeAllReconcile:
             "confidence": {"brand": 0.98},
         }
         result = normalize_all(merged)
-        assert result["brand_en"] == "ELGIN"
-        assert result["series_en"] == "MOST VALUABLE PLAYER"
+        assert result["brand_en"] == "TAG HEUER"
         assert "back_brand_en" not in result
 
     def test_high_conf_front_kept_when_back_is_maker(self):
