@@ -39,6 +39,13 @@ def test_no_resample_when_front_empty():
     assert calls["n"] == 0
 
 
+def test_no_resample_when_back_is_case_maker():
+    # CITIZEN/STAR: 裏蓋がケースメーカー刻印 → 上書き対象外 → 再サンプル不要
+    fn, calls = _counter([])
+    assert stabilize_back_brand_override("CITIZEN", "STAR", fn) is True
+    assert calls["n"] == 0
+
+
 def test_stable_back_is_trusted():
     # ELGIN型: 正面誤読(TAG HEUER) vs 裏蓋ELGINが安定 → 上書き採用
     fn, calls = _counter(["ELGIN", "ELGIN", "ELGIN"])

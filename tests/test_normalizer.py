@@ -507,6 +507,27 @@ class TestReconcileBrand:
         assert brand == "CASIO"
         assert source == "front"
 
+    def test_back_is_case_maker_star(self):
+        """CITIZEN(front, 高確信) + STAR(back, ケースメーカー刻印) → front を維持
+
+        ヴィンテージ国産時計の裏蓋には □囲みの STAR などケース製造元の刻印がある
+        （実データ: 2959928 CITIZEN Seine / 2959931 CITIZEN / 2959883 SEIKO）。
+        製品ブランドではないため上書きに使わない。
+        """
+        brand, source = reconcile_brand("CITIZEN", "STAR", front_conf=1.0)
+        assert brand == "CITIZEN"
+        assert source == "front"
+
+    def test_back_case_maker_not_adopted_when_front_empty(self):
+        """front空 + STAR(back, ケースメーカー刻印) → 補完にも使わず空のまま
+
+        製造元名（CITIZEN等）は表が空なら補完に使うが、ケースメーカー刻印は
+        製品ブランドであることがないため空欄とし、人手確認に回す。
+        """
+        brand, source = reconcile_brand("", "STAR")
+        assert brand == ""
+        assert source == ""
+
 
 class TestNormalizeAllReconcile:
     """normalize_all でのブランド整合 + 一時キー削除 統合テスト"""
@@ -532,6 +553,61 @@ class TestNormalizeAllReconcile:
         for key in ("back_brand_en", "back_brand_kana",
                     "back_series_en", "back_series_kana", "back_confidence"):
             assert key not in result
+
+    def test_case_maker_back_not_leaked_into_series_or_kana(self):
+        """CITIZEN(front) + STAR/EVERBRIGHT(back, ケース刻印) → シリーズ・カナに漏れない
+
+        実データ 2959931: 裏蓋の「EVERBRIGHT BACK」（材質表記）が back_series_en に
+        読まれ、front のシリーズが空だと補完経由でタイトルに混入していた。
+        ケースメーカー・材質刻印はシリーズ補完にも使わない。
+        """
+        merged = {
+            "brand_en": "CITIZEN",
+            "brand_kana": "",
+            "series_en": "",
+            "series_kana": "",
+            "back_brand_en": "STAR",
+            "back_brand_kana": "スター",
+            "back_series_en": "EVERBRIGHT",
+            "back_series_kana": "エバーブライト",
+            "confidence": {"brand": 1.0},
+        }
+        result = normalize_all(merged)
+        assert result["brand_en"] == "CITIZEN"
+        assert result["series_en"] == ""
+        assert result["series_kana"] == ""
+        assert result["brand_kana"] == ""
+
+    def test_case_maker_raw_inscription_variant_not_leaked(self):
+        """back_series が刻印生値「EVERBRIGHT BACK」で返ってきても漏れない
+
+        AIは通常「EVERBRIGHT」に切り出すが、刻印どおりの生値で返す可能性もある。
+        部分一致にすると実在シリーズ（SEVEN STAR 等）を誤って消すため、
+        バリアントはリテラルで CASE_MAKERS に持つ。
+        """
+        merged = {
+            "brand_en": "CITIZEN",
+            "series_en": "",
+            "back_brand_en": "",
+            "back_series_en": "EVERBRIGHT BACK",
+            "back_series_kana": "エバーブライトバック",
+        }
+        result = normalize_all(merged)
+        assert result["series_en"] == ""
+        assert result["series_kana"] == ""
+
+    def test_real_series_containing_star_is_kept(self):
+        """「SEVEN STAR」等、STARを含む実在シリーズは消されない（完全一致ガードの確認）"""
+        merged = {
+            "brand_en": "CITIZEN",
+            "series_en": "",
+            "back_brand_en": "",
+            "back_series_en": "SEVEN STAR",
+            "back_series_kana": "セブンスター",
+        }
+        result = normalize_all(merged)
+        assert result["series_en"] == "SEVEN STAR"
+        assert result["series_kana"] == "セブンスター"
 
     def test_back_brand_supplements_when_front_empty(self):
         """front空 + ELGIN(back) → brand_en=ELGIN、kana/series も back を採用"""
