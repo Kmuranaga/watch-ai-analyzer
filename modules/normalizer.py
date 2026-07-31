@@ -8,6 +8,8 @@ import re
 import unicodedata
 from collections import Counter
 
+from config import DISCARD_NON_PRINTED_BRAND
+
 logger = logging.getLogger(__name__)
 
 
@@ -192,6 +194,17 @@ def _reconcile_brand_fields(result: dict) -> None:
     - シリーズ・かなは採用元に合わせて front/back を採用（採用元が空なら他方で補完）。
     - 裏蓋用の一時キー（back_*）は出力に残さないよう pop する。
     """
+    # brand_evidence による破棄（既定 OFF。プロンプト単独で推定が止まらない場合の保険）
+    # 文字盤に文字が無いのに brand_en が埋まっている＝自己申告根拠が printed_text 以外、
+    # というケースを破棄する。brand_evidence キーが無い・空文字なら従来どおり採用する。
+    if DISCARD_NON_PRINTED_BRAND:
+        front_brand_en = result.get("brand_en", "")
+        brand_evidence = result.get("brand_evidence", "")
+        if front_brand_en and brand_evidence and brand_evidence != "printed_text":
+            logger.info(f"正面ブランドを破棄（brand_evidence={brand_evidence!r}）: {front_brand_en}")
+            result["brand_en"] = ""
+            result["brand_kana"] = ""
+
     # ケースメーカー・材質刻印（□STAR, EVERBRIGHT 等）は製品ブランドでもシリーズでもないため、
     # ブランド整合・補完に入る前に裏蓋読み取り値から除外する
     # （例: 2959931 の「EVERBRIGHT BACK」が back_series 経由でタイトルに混入するのを防ぐ）
@@ -208,6 +221,7 @@ def _reconcile_brand_fields(result: dict) -> None:
 
     final_brand, source = reconcile_brand(front_brand, back_brand, front_conf)
     result["brand_en"] = final_brand
+    result["brand_source"] = source  # 診断用（採用元 front/back/""）。CSV出力には影響しない
 
     front_series = result.get("series_en", "")
     back_series = result.get("back_series_en", "")
@@ -228,7 +242,8 @@ def _reconcile_brand_fields(result: dict) -> None:
 
     # 裏蓋用の一時キーは出力に残さない
     for key in ("back_brand_en", "back_brand_kana",
-                "back_series_en", "back_series_kana", "back_confidence"):
+                "back_series_en", "back_series_kana", "back_confidence",
+                "brand_evidence"):
         result.pop(key, None)
 
 

@@ -139,6 +139,14 @@ def apply_series_slogan_filter(product: ProductImages, result: ProductResult) ->
         logger.error(f"シリーズ・スローガン判定エラー: {e}")
 
 
+def append_brand_review_status(result: ProductResult, errors: list[str]) -> None:
+    """ブランド最終値が空なら人手確認の目印を立てる（single/batch/WebUI 共通）。
+    文字盤に文字が無く裏蓋補完も成立しなかったケース。汎用カテゴリに落ちると
+    警告が出ないため、ここで明示的に記録する。"""
+    if not (result.brand_en or "").strip():
+        errors.append("ブランド判読不可")
+
+
 def process_single_product(
     product: ProductImages,
     mapper: CategoryMapper,
@@ -238,6 +246,9 @@ def process_single_product(
     result.hand_count_source = hand_count_source
     if not hand_count:
         errors.append("針数コメント無し")
+
+    # ブランド最終値が空なら人手確認の目印を立てる
+    append_brand_review_status(result, errors)
 
     # --- Step 5.5: シリーズのスローガン除外（複合フィルタ）---
     apply_series_slogan_filter(product, result)
@@ -487,6 +498,9 @@ def main():
             result.hand_count_source = hand_count_source
             if not hand_count:
                 errors.append("針数コメント無し")
+
+            # ブランド最終値が空なら人手確認の目印を立てる
+            append_brand_review_status(result, errors)
 
             # シリーズのスローガン除外（single と共通のヘルパー）
             apply_series_slogan_filter(product, result)

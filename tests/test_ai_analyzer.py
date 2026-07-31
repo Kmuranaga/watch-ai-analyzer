@@ -9,9 +9,11 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import modules.ai_analyzer as ai
 from modules.ai_analyzer import (
     _parse_json_response,
     _encode_image,
+    analyze_front,
     parse_batch_results_for_product,
     register_rate_limit_callback,
     _notify_rate_limit,
@@ -216,3 +218,27 @@ class TestGenerationConfig:
             "AI_MAX_TOKENS が小さすぎます。gemini-2.5-pro の思考トークンで"
             "出力枠が枯渇し、裏蓋型番等の抽出が間欠的に失敗します。"
         )
+
+
+class TestAnalyzeFrontDefaults:
+    """analyze_front のデフォルト補完のテスト"""
+
+    def test_brand_evidence_default_included(self, monkeypatch, tmp_path):
+        """APIが brand_evidence を返さなくても、デフォルト補完で空文字が入ること"""
+        monkeypatch.setattr(ai, "_call_api", lambda prompt, image_path, extra_images=None: {})
+
+        img = tmp_path / "front.jpg"
+        img.write_bytes(b"dummy")
+
+        result = analyze_front(img)
+        assert "brand_evidence" in result
+        assert result["brand_evidence"] == ""
+
+
+class TestFrontPromptDrift:
+    """front_analysis.txt の内容ドリフト防止"""
+
+    def test_prompt_contains_brand_evidence(self):
+        from config import PROMPTS_DIR
+        text = (PROMPTS_DIR / "front_analysis.txt").read_text(encoding="utf-8")
+        assert "brand_evidence" in text
