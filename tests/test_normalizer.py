@@ -388,6 +388,46 @@ class TestNormalizeSeries:
         result = normalize_all(data)
         assert result["series_en"] == "LORD MATIC"
 
+    def test_lk_expands_to_lukia(self):
+        """SEIKO の LK → LUKIA（クライアント報告事象）"""
+        assert normalize_series("LK", "SEIKO") == "LUKIA"
+
+    def test_lk_no_expand_for_non_seiko(self):
+        """SEIKO 以外では LK を展開しない"""
+        assert normalize_series("LK", "CITIZEN") == "LK"
+
+
+class TestNormalizeAllSeriesKana:
+    """normalize_all: SEIKO略称展開時の series_kana 上書き"""
+
+    def test_lk_expansion_overwrites_wrong_kana(self):
+        """LK→LUKIA 展開時、AIの誤カナ「エルケー」を「ルキア」で上書きする"""
+        data = {"brand_en": "SEIKO", "series_en": "LK", "series_kana": "エルケー"}
+        result = normalize_all(data)
+        assert result["series_en"] == "LUKIA"
+        assert result["series_kana"] == "ルキア"
+
+    def test_lm_expansion_keeps_existing_correct_kana(self):
+        """LM→LORD MATIC 展開時、既存の正しいカナはそのまま維持される（既存挙動維持）"""
+        data = {"brand_en": "SEIKO", "series_en": "LM", "series_kana": "ロードマチック"}
+        result = normalize_all(data)
+        assert result["series_en"] == "LORD MATIC"
+        assert result["series_kana"] == "ロードマチック"
+
+    def test_direct_lukia_not_expanded_kana_untouched(self):
+        """略称でなく直接 LUKIA と表記されている場合は上書きロジックが誤発火しない"""
+        data = {"brand_en": "SEIKO", "series_en": "LUKIA", "series_kana": "ルキア"}
+        result = normalize_all(data)
+        assert result["series_en"] == "LUKIA"
+        assert result["series_kana"] == "ルキア"
+
+    def test_unrelated_series_not_affected(self):
+        """略称展開に無関係なシリーズは影響を受けない"""
+        data = {"brand_en": "SEIKO", "series_en": "SPIRIT", "series_kana": "スピリット"}
+        result = normalize_all(data)
+        assert result["series_en"] == "SPIRIT"
+        assert result["series_kana"] == "スピリット"
+
 
 class TestNormalizeAll:
     """normalize_all 統合テスト"""
