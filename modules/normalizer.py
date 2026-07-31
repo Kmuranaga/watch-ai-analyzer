@@ -25,7 +25,18 @@ def normalize_all(data: dict) -> dict:
 
     # シリーズ名正規化（大文字化＋SEIKO略称の展開。展開はブランド整合後の brand_en を使う）
     if result.get("series_en"):
-        result["series_en"] = normalize_series(result["series_en"], result.get("brand_en", ""))
+        brand_for_series = result.get("brand_en", "")
+        pre_series = normalize_text(result["series_en"]).upper()
+        alias_expanded = (
+            normalize_brand(brand_for_series) == "SEIKO"
+            and pre_series in SEIKO_SERIES_ALIAS
+        )
+        result["series_en"] = normalize_series(result["series_en"], brand_for_series)
+        # 略称展開が発火した場合のみ、対応するカナでAIの誤カナ（例: LK→"エルケー"）を上書きする
+        if alias_expanded:
+            kana = SEIKO_SERIES_ALIAS_KANA.get(result["series_en"])
+            if kana:
+                result["series_kana"] = kana
 
     # 素材名正規化
     if result.get("material"):
@@ -99,6 +110,17 @@ SEIKO_SERIES_ALIAS = {
     "LM": "LORD MATIC",
     "KS": "KING SEIKO",
     "GS": "GRAND SEIKO",
+    "LK": "LUKIA",  # LUKIA の文字盤刻印は "lk" ロゴのみのため略称のまま出力されがち
+}
+
+
+# === 略称展開後の正式シリーズ名に対応するカナ ===
+# 展開が発火した場合のみ、AIの誤カナ（例: LK→"エルケー"）をこちらで上書きする。
+SEIKO_SERIES_ALIAS_KANA = {
+    "LORD MATIC": "ロードマチック",
+    "KING SEIKO": "キングセイコー",
+    "GRAND SEIKO": "グランドセイコー",
+    "LUKIA": "ルキア",
 }
 
 
