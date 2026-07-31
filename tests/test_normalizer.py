@@ -7,6 +7,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import modules.normalizer as normalizer_module
 from modules.normalizer import (
     normalize_text,
     normalize_brand,
@@ -756,3 +757,60 @@ class TestNormalizeAllReconcile:
         assert result["brand_en"] == "SEIKO"
         assert result["series_en"] == "CRONOS"
         assert "back_brand_en" not in result
+
+    # === brand_source（診断用キー）===
+
+    def test_brand_source_front(self, known_brands):
+        """文字盤採用時は brand_source == 'front'"""
+        merged = {"brand_en": "SEIKO", "back_brand_en": "ELGIN"}
+        result = normalize_all(merged)
+        assert result["brand_en"] == "SEIKO"
+        assert result["brand_source"] == "front"
+
+    def test_brand_source_back(self, known_brands):
+        """裏蓋補完採用時は brand_source == 'back'"""
+        merged = {"brand_en": "", "back_brand_en": "ELGIN"}
+        result = normalize_all(merged)
+        assert result["brand_en"] == "ELGIN"
+        assert result["brand_source"] == "back"
+
+    def test_brand_source_empty_when_unresolved(self, known_brands):
+        """front空 + 未登録裏蓋ブランド(RONSON) → brand_en=='' かつ brand_source==''"""
+        merged = {"brand_en": "", "back_brand_en": "RONSON"}
+        result = normalize_all(merged)
+        assert result["brand_en"] == ""
+        assert result["brand_source"] == ""
+
+    # === DISCARD_NON_PRINTED_BRAND（brand_evidence による破棄）===
+
+    def test_discard_non_printed_brand_when_flag_enabled(self, monkeypatch):
+        """DISCARD_NON_PRINTED_BRAND=True + brand_evidence='logo_mark' → front brand を破棄"""
+        monkeypatch.setattr(normalizer_module, "DISCARD_NON_PRINTED_BRAND", True)
+        merged = {
+            "brand_en": "ROLEX",
+            "brand_kana": "ロレックス",
+            "brand_evidence": "logo_mark",
+        }
+        result = normalize_all(merged)
+        assert result["brand_en"] == ""
+        assert result["brand_kana"] == ""
+
+    def test_discard_flag_enabled_but_no_evidence_key_keeps_front(self, monkeypatch):
+        """DISCARD_NON_PRINTED_BRAND=True でも brand_evidence キーが無ければ従来どおり採用"""
+        monkeypatch.setattr(normalizer_module, "DISCARD_NON_PRINTED_BRAND", True)
+        merged = {
+            "brand_en": "ROLEX",
+            "brand_kana": "ロレックス",
+        }
+        result = normalize_all(merged)
+        assert result["brand_en"] == "ROLEX"
+        assert result["brand_kana"] == "ロレックス"
+
+    def test_brand_evidence_not_leaked_into_output(self):
+        """brand_evidence は一時キーとして出力に残らない"""
+        merged = {
+            "brand_en": "SEIKO",
+            "brand_evidence": "printed_text",
+        }
+        result = normalize_all(merged)
+        assert "brand_evidence" not in result

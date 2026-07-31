@@ -36,7 +36,7 @@ from modules.hand_count_policy import decide_hand_count, title_hand_count_for
 from modules.category_mapper import CategoryMapper
 from modules.title_generator import generate_title
 from modules.csv_writer import ProductResult, COLUMNS, write_csv, write_excel
-from main import apply_model_number_recovery, apply_series_slogan_filter
+from main import apply_model_number_recovery, apply_series_slogan_filter, append_brand_review_status
 
 app = Flask(__name__)
 
@@ -241,6 +241,9 @@ def process_product_with_progress(
     result.hand_count_source = hand_count_source
     if not hand_count:
         errors.append("針数コメント無し")
+
+    # ブランド最終値が空なら人手確認の目印を立てる
+    append_brand_review_status(result, errors)
 
     # シリーズのスローガン除外（CLIと共通のヘルパー）
     apply_series_slogan_filter(product, result)

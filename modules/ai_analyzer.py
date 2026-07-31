@@ -294,6 +294,7 @@ def analyze_front(image_path: Path, diagonal_image_path: Path | None = None) -> 
     defaults = {
         "brand_en": "",
         "brand_kana": "",
+        "brand_evidence": "",
         "series_en": "",
         "series_kana": "",
         "body_color": "",
@@ -307,6 +308,12 @@ def analyze_front(image_path: Path, diagonal_image_path: Path | None = None) -> 
     for key, default in defaults.items():
         if key not in result:
             result[key] = default
+
+    # 正面ブランド文字なし（診断ログ。値は変更しない）
+    if not (result.get("brand_en") or "").strip():
+        logger.info(f"正面ブランド文字なし: {image_path.name} "
+                    f"(brand_evidence={result.get('brand_evidence', '')!r}, "
+                    f"conf={(result.get('confidence') or {}).get('brand')})")
 
     return result
 

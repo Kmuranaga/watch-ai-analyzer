@@ -71,3 +71,9 @@ BATCH_API_ENABLED = True  # Batch APIを利用するか（50%割引）
 # === 並列処理設定 ===
 MAX_CONCURRENT_PRODUCTS = 3  # 同時処理する商品数の上限
 MAX_CONCURRENT_API_CALLS = 3  # 1商品内の同時API呼び出し数（正面・裏蓋・コメント）
+
+# === ブランド判定設定 ===
+# 正面ブランドの自己申告根拠（brand_evidence）が printed_text 以外なら破棄するか。
+# 既定 False = ログ収集のみ（プロンプト側の指示で制御）。プロンプト単独で
+# 推定が止まらない場合に True にして段階的に強める。
+DISCARD_NON_PRINTED_BRAND = False
