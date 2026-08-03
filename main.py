@@ -147,6 +147,26 @@ def append_brand_review_status(result: ProductResult, errors: list[str]) -> None
         errors.append("ブランド判読不可")
 
 
+def apply_mapping_kana_priority(result: ProductResult, mapper: CategoryMapper) -> None:
+    """mapping.xlsx 登録ブランドのカナ表記を常に優先する（single/batch/WebUI 共通）。
+
+    クライアント合意仕様: mapping に登録済みのブランドは、AI が読んだカナ
+    （例: FHB → 「エフエイチビー」）ではなく mapping の brand_kana
+    （例: 「フェリックスフーバー」）を必ず使う。
+    mapping に未登録／カナ欄が空のブランドは AI のカナをそのまま使う（空欄化しない）。
+    """
+    logger = logging.getLogger(__name__)
+    if not result.brand_en:
+        return
+    mapped_kana = mapper.get_brand_kana(result.brand_en)
+    if mapped_kana and mapped_kana != result.brand_kana:
+        logger.info(
+            f"ブランドカナを mapping 優先で置換: {result.brand_en} "
+            f"{result.brand_kana!r} → {mapped_kana!r}"
+        )
+        result.brand_kana = mapped_kana
+
+
 def process_single_product(
     product: ProductImages,
     mapper: CategoryMapper,
@@ -254,9 +274,8 @@ def process_single_product(
     apply_series_slogan_filter(product, result)
 
     # --- Step 6: カテゴリマッピング ---
-    # mapping.xlsxのカナ表記でAI結果を補完
-    if result.brand_en and not result.brand_kana:
-        result.brand_kana = mapper.get_brand_kana(result.brand_en)
+    # ブランドカナは mapping 登録があれば常に mapping を優先（AIカナより優先）
+    apply_mapping_kana_priority(result, mapper)
     if result.brand_en and result.series_en and not result.series_kana:
         result.series_kana = mapper.get_series_kana(result.brand_en, result.series_en)
 
@@ -505,9 +524,8 @@ def main():
             # シリーズのスローガン除外（single と共通のヘルパー）
             apply_series_slogan_filter(product, result)
 
-            # カテゴリマッピング（mapping.xlsxのカナ表記で補完）
-            if result.brand_en and not result.brand_kana:
-                result.brand_kana = mapper.get_brand_kana(result.brand_en)
+            # ブランドカナは mapping 登録があれば常に mapping を優先（AIカナより優先）
+            apply_mapping_kana_priority(result, mapper)
             if result.brand_en and result.series_en and not result.series_kana:
                 result.series_kana = mapper.get_series_kana(result.brand_en, result.series_en)
 

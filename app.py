@@ -36,7 +36,12 @@ from modules.hand_count_policy import decide_hand_count, title_hand_count_for
 from modules.category_mapper import CategoryMapper
 from modules.title_generator import generate_title
 from modules.csv_writer import ProductResult, COLUMNS, write_csv, write_excel
-from main import apply_model_number_recovery, apply_series_slogan_filter, append_brand_review_status
+from main import (
+    apply_model_number_recovery,
+    apply_series_slogan_filter,
+    append_brand_review_status,
+    apply_mapping_kana_priority,
+)
 
 app = Flask(__name__)
 
@@ -249,8 +254,8 @@ def process_product_with_progress(
     apply_series_slogan_filter(product, result)
 
     # カテゴリマッピング
-    if result.brand_en and not result.brand_kana:
-        result.brand_kana = mapper.get_brand_kana(result.brand_en)
+    # ブランドカナは mapping 登録があれば常に mapping を優先（AIカナより優先）
+    apply_mapping_kana_priority(result, mapper)
     if result.brand_en and result.series_en and not result.series_kana:
         result.series_kana = mapper.get_series_kana(result.brand_en, result.series_en)
 
