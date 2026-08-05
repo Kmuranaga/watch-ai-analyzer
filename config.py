@@ -29,13 +29,25 @@ if _ENV_FILE.exists():
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
 # === AIモデル設定 ===
-AI_MODEL = "gemini-2.5-pro"
+AI_MODEL = os.environ.get("AI_MODEL", "gemini-3.6-flash")
+# 切り戻し（gemini-2.5-pro）時の注意:
 # gemini-2.5-pro は思考(thinking)トークンも max_output_tokens を消費する。
 # 2048 では思考が枠を食い尽くし、出力が空(text=None)や途中切断したJSONになって
 # 解析が間欠的に失敗する（裏蓋型番の抽出漏れの主因）。出力JSON自体は数百トークンと
 # 小さいため、思考分の余裕を確保するために十分大きな値にする。
+# Gemini 3系では思考の深さは AI_THINKING_LEVEL（thinking_level）で制御するため、
+# 上記のmax_output_tokens枯渇問題は基本的に生じない。
 AI_MAX_TOKENS = 8192
-AI_TEMPERATURE = 0.0  # 解析精度重視のため低温設定
+# Gemini 2.5系でのみ送信。Gemini 3系では公式推奨に従い未指定（既定1.0）。
+# Gemini 3系に温度0.0等を送るとループ・性能劣化の恐れがあるため送らない。
+AI_TEMPERATURE = 0.0  # 解析精度重視のため低温設定（2.5系向け）
+
+# Gemini 3系の思考の深さ（minimal/low/medium/high）。
+# 移行検証（64商品A/B）で low はシリーズ・型番に退行（余剰語・英字ノイズ付与）が出たため、
+# 既定は medium（旧2.5-pro同等以上を確認済み）。さらなる精度調整用の high も指定可。
+AI_THINKING_LEVEL = os.environ.get("AI_THINKING_LEVEL", "medium")
+# Gemini 3系の画像解像度（low/medium/high）。刻印・小さな文字の読み取りがあるため high。
+AI_MEDIA_RESOLUTION = os.environ.get("AI_MEDIA_RESOLUTION", "high")
 
 # === パス設定 ===
 DEFAULT_INPUT_DIR = PROJECT_ROOT / "input"

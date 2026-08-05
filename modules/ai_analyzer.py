@@ -19,6 +19,7 @@ except ImportError:
 
 from config import (
     GEMINI_API_KEY, AI_MODEL, AI_MAX_TOKENS, AI_TEMPERATURE,
+    AI_THINKING_LEVEL, AI_MEDIA_RESOLUTION,
     PROMPTS_DIR, API_MAX_RETRIES, API_RETRY_BASE_DELAY, API_RETRY_MAX_DELAY,
 )
 
@@ -98,6 +99,38 @@ def _get_client() -> "genai.Client":
     if not GEMINI_API_KEY:
         raise ValueError("GEMINI_API_KEY が設定されていません。")
     return genai.Client(api_key=GEMINI_API_KEY)
+
+
+def _generation_config() -> "types.GenerateContentConfig":
+    """モデル世代に応じた生成設定を返す。
+
+    Gemini 3系: temperature は指定しない（公式が既定1.0の維持を強く推奨。
+    1.0未満はループ・性能劣化の恐れがある）。思考は thinking_level で制御し、
+    画像解像度は media_resolution で固定する。
+    Gemini 2.5系（切り戻し用）: 従来どおり temperature=AI_TEMPERATURE のみ指定。
+    thinking_level 等を送ると 2.5 系では無効/エラーになり得るため送らない。
+    この分岐により AI_MODEL 環境変数を gemini-2.5-pro に戻すだけで
+    現行動作へ完全復帰できる（2026-10-16 の 2.5 提供終了まで有効な切り戻しパス）。
+    """
+    if AI_MODEL.startswith("gemini-3"):
+        media_resolution_map = {
+            "low": types.MediaResolution.MEDIA_RESOLUTION_LOW,
+            "medium": types.MediaResolution.MEDIA_RESOLUTION_MEDIUM,
+            "high": types.MediaResolution.MEDIA_RESOLUTION_HIGH,
+        }
+        media_resolution = media_resolution_map.get(
+            (AI_MEDIA_RESOLUTION or "").strip().lower(),
+            types.MediaResolution.MEDIA_RESOLUTION_HIGH,
+        )
+        return types.GenerateContentConfig(
+            max_output_tokens=AI_MAX_TOKENS,
+            thinking_config=types.ThinkingConfig(thinking_level=AI_THINKING_LEVEL),
+            media_resolution=media_resolution,
+        )
+    return types.GenerateContentConfig(
+        max_output_tokens=AI_MAX_TOKENS,
+        temperature=AI_TEMPERATURE,
+    )
 
 
 def _wait_for_rate_limit():
@@ -185,10 +218,7 @@ def _call_api_core(prompt: str, image_parts: list, label: str) -> dict:
 
     client = _get_client()
 
-    config = types.GenerateContentConfig(
-        max_output_tokens=AI_MAX_TOKENS,
-        temperature=AI_TEMPERATURE,
-    )
+    config = _generation_config()
 
     for attempt in range(1, API_MAX_RETRIES + 1):
         # 他スレッドが設定したレートリミット待機
@@ -521,10 +551,7 @@ def _build_batch_request(custom_id: str, prompt: str, image_path: Path, extra_im
                 parts=parts,
             )
         ],
-        "config": types.GenerateContentConfig(
-            max_output_tokens=AI_MAX_TOKENS,
-            temperature=AI_TEMPERATURE,
-        ),
+        "config": _generation_config(),
     }
 
 
@@ -543,10 +570,7 @@ def _build_batch_request_bytes(custom_id: str, prompt: str, image_bytes: bytes,
                 parts=parts,
             )
         ],
-        "config": types.GenerateContentConfig(
-            max_output_tokens=AI_MAX_TOKENS,
-            temperature=AI_TEMPERATURE,
-        ),
+        "config": _generation_config(),
     }
 
 
@@ -610,22 +634,38 @@ def submit_batch(requests: list[dict]) -> str:
     return batch_job.name
 
 
-def poll_batch(batch_id: str, poll_interval: int = 60) -> None:
+def poll_batch(batch_id: str, poll_interval: int = 60,
+               timeout_seconds: int = 60 * 60 * 24) -> None:
     """
     Batch APIの処理完了をポーリングで待機する。
+
+    Batchジョブは受理から48時間で失効するため、無限待機を避けるべく
+    タイムアウト（既定24時間）を設ける。超過時は例外を投げ、呼び出し元の
+    エラー処理に乗せる。
 
     Args:
         batch_id: バッチジョブ名
         poll_interval: ポーリング間隔（秒、デフォルト60秒）
+        timeout_seconds: 待機の上限（秒、デフォルト86400秒=24時間）
 
     Raises:
         RuntimeError: バッチが失敗/キャンセル/期限切れの場合
+        TimeoutError: timeout_seconds を超えても完了しなかった場合
     """
     client = _get_client()
     completed_states = {"JOB_STATE_SUCCEEDED", "JOB_STATE_FAILED",
                         "JOB_STATE_CANCELLED", "JOB_STATE_EXPIRED"}
 
+    start = time.monotonic()
+
     while True:
+        elapsed = time.monotonic() - start
+        if elapsed > timeout_seconds:
+            raise TimeoutError(
+                f"Batch待機がタイムアウトしました: {batch_id} "
+                f"(timeout_seconds={timeout_seconds})"
+            )
+
         batch_job = client.batches.get(name=batch_id)
         state = batch_job.state.name if hasattr(batch_job.state, "name") else str(batch_job.state)
 

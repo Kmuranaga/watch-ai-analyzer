@@ -358,6 +358,27 @@ class TestNormalizeModelNumber:
         """通常の型番はそのまま"""
         assert normalize_model_number("EQB-501XDB-2A") == "EQB-501XDB-2A"
 
+    def test_d_adjacent_noise_tokens_both_sides_removed(self):
+        """(d) gemini-3.6-flash が隣接刻印を含めて返す実例:
+        先頭・末尾の3文字以下純英字トークンを除去する"""
+        assert normalize_model_number("IT 469658A-6B PR") == "469658A-6B"
+
+    def test_d_adjacent_noise_token_prefix_only(self):
+        """(d) 先頭のみノイズトークンがある場合"""
+        assert normalize_model_number("PR 6119-8030") == "6119-8030"
+
+    def test_d_adjacent_noise_token_suffix_only(self):
+        """(d) 末尾のみノイズトークンがある場合"""
+        assert normalize_model_number("6119-8030 IT") == "6119-8030"
+
+    def test_d_no_whitespace_unaffected(self):
+        """(d) 空白がない（単一トークン）場合は対象外・変化なし"""
+        assert normalize_model_number("DW-8800") == "DW-8800"
+
+    def test_d_all_alpha_tokens_untouched(self):
+        """(d) 全トークンが純英字の場合は何もしない（既存の機能語除去が別途担当）"""
+        assert normalize_model_number("AUTOMATIC") == ""
+
 
 class TestNormalizeSeries:
     """シリーズ名正規化（SEIKO略称展開）"""
