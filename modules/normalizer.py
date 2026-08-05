@@ -626,6 +626,27 @@ def normalize_model_number(model_number: str, brand_en: str = "") -> str:
     if not text:
         return ""
 
+    # (d) 隣接ノイズ英字トークンの除去（gemini-3.6-flash 特有の読み取り性質）
+    #     裏蓋型番の前後に隣接する短い刻印（メーカーコード等）を型番の一部として
+    #     一緒に返すことがある（実例 2924290: GT "469658A-6B" に対し
+    #     "IT 469658A-6B PR" と出力。thinking low/medium いずれでも同一値＝
+    #     偶発的な誤読ではなく決定論的な読み取り性質）。
+    #     仕様書4.2の機能語除去（AUTOMATIC 等）と同系統の後処理として、
+    #     数字を含むトークンが1つ以上ある場合に限り、先頭・末尾の
+    #     「3文字以下の純英字トークン」を除去する。中間のトークン・数字を含む
+    #     トークンは対象外。全トークンが純英字の場合（＝数字を含むトークンが無い）
+    #     は型番本体の判別ができないため何もしない。
+    #     ※ (a) モジュール番号除去より前に行う必要がある。後段だと例えば
+    #        "6119-8030 IT" が「先頭が \d{3,4}- で全体に英字を含む」と誤認され、
+    #        正当な型番の "6119-" が誤ってモジュール番号として剥がされてしまう。
+    tokens = text.split(" ")
+    if len(tokens) > 1 and any(re.search(r"\d", t) for t in tokens):
+        while len(tokens) > 1 and re.fullmatch(r"[A-Z]{1,3}", tokens[0]):
+            tokens.pop(0)
+        while len(tokens) > 1 and re.fullmatch(r"[A-Z]{1,3}", tokens[-1]):
+            tokens.pop()
+        text = " ".join(tokens)
+
     # (a) 先頭モジュール番号の除去（例 "5081-GA-100CF" → "GA-100CF"）
     #     ただし数字とハイフンだけの文字列（モジュール番号のみ）は除去しない
     if _MODULE_PREFIX_RE.match(text) and re.search(r"[A-Z]", text):
