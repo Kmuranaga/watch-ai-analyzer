@@ -21,6 +21,15 @@ from config import MAPPING_FILE, CATEGORY_NAME_FILE
 
 logger = logging.getLogger(__name__)
 
+_KANA_CHARS_RE = re.compile(r"[぀-ヿ一-鿿]")
+
+
+def _is_kana_text(value: str) -> bool:
+    """ブランドカナ列の値が実際にカナ（日本語）を含むか。
+    mapping ではカナ欄にサブブランド名（G-SHOCK / Baby-G）や英字ブランド名（IWC）が
+    入っている行があり、そのまま採用するとタイトルが英字の二重表記になる。"""
+    return bool(value) and bool(_KANA_CHARS_RE.search(value))
+
 
 class CategoryMapper:
     """カテゴリマッピングエンジン"""
@@ -186,6 +195,14 @@ class CategoryMapper:
             f"ブランド別名 {len(self.brand_alias_map)}件, "
             f"汎用カテゴリ {len(self.generic_categories)}件"
         )
+
+        # ブランドカナ欄にカナ以外の値が入っているブランドを警告
+        for brand, entry in self.brand_fallback_map.items():
+            kana = entry.get("brand_kana", "")
+            if kana and not _is_kana_text(kana):
+                logger.warning(
+                    f"mapping.xlsx: ブランドカナ欄にカナ以外の値: {brand} = {kana!r}（採用されません）"
+                )
 
     def lookup(
         self,
@@ -409,18 +426,29 @@ class CategoryMapper:
         return self.category_name_map.get(category_id.strip(), "")
 
     def get_brand_kana(self, brand_en: str) -> str:
-        """ブランドのカナ表記を取得"""
+        """ブランドのカナ表記を取得。
+
+        優先度1: フォールバック行（「（その他）」行）の brand_kana。
+                 ブランド単位で一意に定まり行順に依存しない。
+        優先度2: ブランド+シリーズ行の brand_kana（フォールバック行が無い場合のみ）。
+        いずれもカナ（日本語）を含む値のみ採用する。brand_kana 欄に
+        サブブランド名（G-SHOCK等）や英字ブランド名（IWC等）しか無い場合は
+        採用せず空文字を返す（タイトルの英字二重表記を防ぐ）。
+        """
         brand = brand_en.upper().strip() if brand_en else ""
         brand = self._resolve_brand(brand)
 
-        # まずブランド+シリーズマップから検索
-        for (b, _), entry in self.brand_series_map.items():
-            if b == brand and entry["brand_kana"]:
-                return entry["brand_kana"]
+        # 優先度1: フォールバック行（行順に依存しない）
+        fallback = self.brand_fallback_map.get(brand)
+        if fallback:
+            kana = fallback.get("brand_kana", "")
+            if _is_kana_text(kana):
+                return kana
 
-        # フォールバックマップから検索
-        if brand in self.brand_fallback_map:
-            return self.brand_fallback_map[brand].get("brand_kana", "")
+        # 優先度2: ブランド+シリーズマップから検索
+        for (b, _), entry in self.brand_series_map.items():
+            if b == brand and _is_kana_text(entry["brand_kana"]):
+                return entry["brand_kana"]
 
         return ""
 
