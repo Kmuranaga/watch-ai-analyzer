@@ -419,8 +419,73 @@ class TestNormalizeSeries:
         assert normalize_series("LK", "CITIZEN") == "LK"
 
 
+class TestNormalizeSeriesFunctionWords:
+    """シリーズの機能語除去（仕様書4.4／型番4.2(c)と対称）"""
+
+    def test_chronograph_only_becomes_empty(self):
+        """クライアント報告 2999571: 文字盤の "Chronograph" 印字がシリーズに入る"""
+        assert normalize_series("CHRONOGRAPH", "TOWN & COUNTRY SURF DESIGNS") == ""
+
+    def test_lowercase_input(self):
+        assert normalize_series("chronograph") == ""
+
+    def test_function_word_removed_from_multiword(self):
+        assert normalize_series("SPEEDMASTER CHRONOGRAPH", "OMEGA") == "SPEEDMASTER"
+
+    def test_other_spec_words(self):
+        assert normalize_series("QUARTZ") == ""
+        assert normalize_series("WATER RESISTANT") == ""
+        assert normalize_series("JAPAN MOVT") == ""
+        assert normalize_series("STAINLESS STEEL") == ""
+
+    def test_swatch_chrono_is_protected(self):
+        """mapping.xlsx 登録の実在シリーズ SWATCH CHRONO は除去しない"""
+        assert normalize_series("CHRONO", "SWATCH") == "CHRONO"
+
+    def test_chrono_removed_for_other_brands(self):
+        assert normalize_series("CHRONO", "SEIKO") == ""
+
+    def test_substring_not_matched(self):
+        """部分一致では消さない（BREITLING CHRONOMAT の保護）"""
+        assert normalize_series("CHRONOMAT", "BREITLING") == "CHRONOMAT"
+
+    def test_hyphen_not_split(self):
+        """型番と違いハイフンでは分割しない（CHRONO-MATIC / ANA-DIGI 等）"""
+        assert normalize_series("CHRONO-MATIC", "BREITLING") == "CHRONO-MATIC"
+
+    def test_real_series_untouched(self):
+        for s in ("PRESAGE", "G-SHOCK", "DATA BANK", "TOUGH SOLAR",
+                  "SEVEN STAR", "PRO TREK"):
+            assert normalize_series(s) == s
+
+    def test_seiko_alias_still_expands(self):
+        """略称展開→機能語除去の順序で既存挙動が壊れない"""
+        assert normalize_series("LM", "SEIKO") == "LORD MATIC"
+
+
 class TestNormalizeAllSeriesKana:
     """normalize_all: SEIKO略称展開時の series_kana 上書き"""
+
+    def test_function_word_series_clears_kana(self):
+        """series_en が機能語のみで空になったら series_kana も空にする（2999571）"""
+        data = {"brand_en": "TOWN & COUNTRY SURF DESIGNS",
+                "series_en": "CHRONOGRAPH", "series_kana": "クロノグラフ"}
+        result = normalize_all(data)
+        assert result["series_en"] == ""
+        assert result["series_kana"] == ""
+
+    def test_partial_removal_strips_kana_token(self):
+        data = {"brand_en": "OMEGA", "series_en": "SPEEDMASTER CHRONOGRAPH",
+                "series_kana": "スピードマスタークロノグラフ"}
+        result = normalize_all(data)
+        assert result["series_en"] == "SPEEDMASTER"
+        assert result["series_kana"] == "スピードマスター"
+
+    def test_swatch_chrono_kana_kept(self):
+        data = {"brand_en": "SWATCH", "series_en": "CHRONO", "series_kana": "クロノ"}
+        result = normalize_all(data)
+        assert result["series_en"] == "CHRONO"
+        assert result["series_kana"] == "クロノ"
 
     def test_lk_expansion_overwrites_wrong_kana(self):
         """LK→LUKIA 展開時、AIの誤カナ「エルケー」を「ルキア」で上書きする"""

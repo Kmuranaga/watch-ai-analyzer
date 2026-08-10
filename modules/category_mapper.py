@@ -204,6 +204,20 @@ class CategoryMapper:
                     f"mapping.xlsx: ブランドカナ欄にカナ以外の値: {brand} = {kana!r}（採用されません）"
                 )
 
+        # シリーズが機能語のみで構成されているブランドを警告
+        # （normalizer.SERIES_FUNCTION_WORDS により normalize_series で除去されるため、
+        #  そのシリーズを新たに mapping.xlsx へ登録しても静かに無効化される）
+        from modules.normalizer import SERIES_FUNCTION_WORDS, SERIES_FUNCTION_WORD_EXCEPTIONS
+        for brand, series in self.brand_series_map:
+            if (series
+                    and all(t in SERIES_FUNCTION_WORDS for t in series.split())
+                    and (brand, series) not in SERIES_FUNCTION_WORD_EXCEPTIONS):
+                logger.warning(
+                    f"mapping.xlsx: シリーズ {brand}+{series!r} は機能語のみで構成されており、"
+                    f"シリーズ正規化で除去されます"
+                    f"（normalizer.SERIES_FUNCTION_WORD_EXCEPTIONS に追加してください）"
+                )
+
     def lookup(
         self,
         brand_en: str,

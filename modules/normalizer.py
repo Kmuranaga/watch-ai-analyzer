@@ -25,7 +25,7 @@ def normalize_all(data: dict) -> dict:
     if result.get("brand_en"):
         result["brand_en"] = normalize_brand(result["brand_en"])
 
-    # シリーズ名正規化（大文字化＋SEIKO略称の展開。展開はブランド整合後の brand_en を使う）
+    # シリーズ名正規化（大文字化＋SEIKO略称の展開＋機能語除去。展開はブランド整合後の brand_en を使う）
     if result.get("series_en"):
         brand_for_series = result.get("brand_en", "")
         pre_series = normalize_text(result["series_en"]).upper()
@@ -39,6 +39,25 @@ def normalize_all(data: dict) -> dict:
             kana = SEIKO_SERIES_ALIAS_KANA.get(result["series_en"])
             if kana:
                 result["series_kana"] = kana
+
+        # 機能語除去（CHRONOGRAPH等）で落ちたトークンがあれば、シリーズカナからも
+        # 対応する語を取り除く。片方だけ残るとタイトルで針数・ムーブメント等と
+        # 同じ語が二重に出る（実例 2999571: series_en="CHRONOGRAPH" / series_kana=
+        # "クロノグラフ" と針数「クロノグラフ」）。例外ペア（SWATCH CHRONO等）は
+        # 除去語が発生しないため不発火のまま。
+        removed_words = [
+            w for w in pre_series.split()
+            if w in SERIES_FUNCTION_WORDS and w not in result["series_en"].split()
+        ]
+        if removed_words:
+            if not result["series_en"]:
+                result["series_kana"] = ""
+            else:
+                kana = result.get("series_kana", "")
+                for word in removed_words:
+                    for token in SERIES_FUNCTION_WORD_KANA.get(word, ()):
+                        kana = kana.replace(token, "")
+                result["series_kana"] = normalize_text(kana)
 
     # 素材名正規化
     if result.get("material"):
@@ -127,15 +146,35 @@ SEIKO_SERIES_ALIAS_KANA = {
 
 
 def normalize_series(series: str, brand: str = "") -> str:
-    """シリーズ名を正規化（大文字化＋SEIKO略称の展開）。
+    """シリーズ名を正規化（大文字化＋SEIKO略称の展開＋機能語の除去）。
 
-    SEIKO の標準的なシリーズ略称（LM/KS/GS）のみ正式名へ展開する。
-    他ブランドで同綴りが別義になる誤展開を避けるため、ブランド=SEIKO に限定する。
+    - SEIKO の標準的なシリーズ略称（LM/KS/GS）のみ正式名へ展開する。
+      他ブランドで同綴りが別義になる誤展開を避けるため、ブランド=SEIKO に限定する。
+    - 仕様・機能語トークン（CHRONOGRAPH, QUARTZ 等）を除去する（仕様書4.4）。
+      対象は「空白区切りの単独トークン」のみ。型番側（normalize_model_number）と
+      異なりハイフンでは分割しない（CHRONO-MATIC / ANA-DIGI 等、ハイフン結合が
+      名称の一部である実在シリーズを壊すため）。部分一致もしない
+      （BREITLING CHRONOMAT を守る）。
     """
     s = normalize_text(series).upper()
     if normalize_brand(brand) == "SEIKO":
-        return SEIKO_SERIES_ALIAS.get(s, s)
-    return s
+        s = SEIKO_SERIES_ALIAS.get(s, s)
+    return _strip_series_function_words(s, brand)
+
+
+def _strip_series_function_words(series: str, brand: str = "") -> str:
+    """正規化済み（大文字）シリーズから機能語トークンを除去する。"""
+    if not series:
+        return ""
+    if (normalize_brand(brand), series) in SERIES_FUNCTION_WORD_EXCEPTIONS:
+        return series
+    tokens = series.split()
+    kept = [t for t in tokens if t not in SERIES_FUNCTION_WORDS]
+    if len(kept) == len(tokens):
+        return series
+    result = " ".join(kept)
+    logger.info(f"シリーズから機能語を除去: {series!r} → {result!r}")
+    return result
 
 
 # === ケース製造元・裏蓋材質の刻印 ===
@@ -571,6 +610,42 @@ MODEL_NUMBER_FUNCTION_WORDS = {
     "WATER", "RESIST", "RESISTANT", "STAINLESS", "STEEL",
     "JAPAN", "MOVT", "MOVEMENT", "DIAL", "CASE", "BACK",
     "MENS", "LADIES",
+}
+
+# === シリーズ名から除去する機能語・仕様語（上記4.2(c)と同系統） ===
+# 文字盤のサブダイヤル周辺・ベゼル・裏蓋には CHRONOGRAPH / QUARTZ / WATER RESISTANT 等の
+# 仕様表記が印字されており、AIがこれをシリーズ名として読み取ることがある
+# （実例 2999571: 文字盤 "Town & Country Surf Designs / Chronograph / 10 bar" →
+#   series_en="CHRONOGRAPH"。タイトルで針数「クロノグラフ」と重複した）。
+# これらはタイトルの別項目（針数・ムーブメント・防水・素材・性別）に既に出るため
+# シリーズ欄からは落とす。
+#
+# MODEL_NUMBER_FUNCTION_WORDS のサブセット。除外した語
+# （TOOL/DIAMOND/DIAMONDS/DIAL/CASE/BACK）は、実在シリーズ名に一般英単語として
+# 紛れ込むリスクの方が高く、かつ重複出力の実害報告が無いため対象外。
+SERIES_FUNCTION_WORDS = MODEL_NUMBER_FUNCTION_WORDS - {
+    "TOOL", "DIAMOND", "DIAMONDS", "DIAL", "CASE", "BACK",
+}
+
+# 上記の機能語だけで構成されるが、mapping.xlsx に実在シリーズとして登録されている
+# （ブランド, シリーズ）の組。除去せずそのまま残す。
+# mapping.xlsx にシリーズを追加する際、その名称が SERIES_FUNCTION_WORDS の語だけで
+# 構成される場合はここにも追加すること（2026-08時点の該当は下記1件のみ）
+SERIES_FUNCTION_WORD_EXCEPTIONS = {
+    ("SWATCH", "CHRONO"),  # mapping.xlsx 登録シリーズ・カテゴリ2084024477
+}
+
+# 機能語を除去した際、シリーズカナからも併せて取り除く対応表。
+# 長い表記を先に置くこと（"クロノグラフ" より先に "クロノ" を消すと「グラフ」が残る）
+SERIES_FUNCTION_WORD_KANA = {
+    "CHRONOGRAPH": ("クロノグラフ", "クロノ"),
+    "CHRONO": ("クロノグラフ", "クロノ"),
+    "QUARTZ": ("クォーツ", "クオーツ"),
+    "AUTOMATIC": ("オートマチック", "自動巻き", "自動巻"),
+    "DIGITAL": ("デジタル",),
+    "ANALOG": ("アナログ",),
+    "STAINLESS": ("ステンレス",),
+    "STEEL": ("スチール",),
 }
 
 # 先頭のモジュール番号パターン（例 CASIO G-SHOCK の "5081-GA-100CF" の "5081-"）

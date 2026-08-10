@@ -119,3 +119,23 @@ class TestGenderAdditionalWordOrder:
             "シルバー 3針 ラウンド ステンレス 20気圧防水 クォーツ メンズ 腕時計"
         )
         assert title == expected
+
+
+class TestChronographDuplication:
+    """2999571: シリーズ機能語除去後、「クロノグラフ」がタイトルに1回だけ出ること"""
+
+    def test_series_cleared_no_duplicate(self):
+        title = generate_title(
+            brand_en="TOWN & COUNTRY SURF DESIGNS",
+            brand_kana="タウン アンド カントリー サーフ デザイン",
+            series_en="", series_kana="",  # 正規化で除去済み
+            model_number="TP00-C0CA", body_color="シルバー",
+            hand_count="クロノグラフ", case_shape="ラウンド", material="ステンレス",
+            water_resistance="10BAR", movement_type="Quartz", gender="メンズ",
+        )
+        assert title.count("クロノグラフ") == 1
+        assert "CHRONOGRAPH" not in title
+        assert title == (
+            "TOWN & COUNTRY SURF DESIGNS タウン アンド カントリー サーフ デザイン "
+            "TP00-C0CA シルバー クロノグラフ ラウンド ステンレス 10BAR Quartz メンズ"
+        )
