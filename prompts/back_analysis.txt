@@ -19,7 +19,8 @@
 ## 素材判定ルール
 - "STAINLESS STEEL", "ST.STEEL", "SS" → ステンレス
 - "TITANIUM", "Ti" → チタン
-- "GOLD", "Au", "K18", "750" → 金
+- "K18", "750" → 18金
+- "GP", "WGP" → 金メッキ
 - "SILVER", "Ag", "925" → 銀
 - "CERAMIC" → セラミック
 - "RESIN", "PLASTIC" → 樹脂
