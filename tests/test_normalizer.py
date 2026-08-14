@@ -94,7 +94,29 @@ class TestNormalizeMaterial:
         assert normalize_material("ceramic") == "セラミック"
 
     def test_resin(self):
-        assert normalize_material("Resin") == "樹脂"
+        """クライアント指示（2026-08）: 質感推測による誤りを避けるため樹脂は出力しない"""
+        assert normalize_material("Resin") == ""
+
+    def test_gold_disabled(self):
+        """クライアント指示（2026-08・3000658/WGP実例）: 金は出力しない"""
+        assert normalize_material("金") == ""
+
+    def test_resin_ja_disabled(self):
+        assert normalize_material("樹脂") == ""
+
+    def test_gold_map_disabled(self):
+        """MATERIAL_MAP経由で金に変換される入力も最終的に空欄になる"""
+        assert normalize_material("GOLD") == ""
+
+    def test_18k_kept(self):
+        """刻印ベースの「18金」は維持する（無効化対象は「金」「樹脂」のみ）"""
+        assert normalize_material("18金") == "18金"
+
+    def test_gold_plating_kept(self):
+        assert normalize_material("金メッキ") == "金メッキ"
+
+    def test_stainless_unaffected(self):
+        assert normalize_material("ステンレス") == "ステンレス"
 
     def test_japanese_passthrough(self):
         """日本語素材名はそのまま"""
@@ -514,6 +536,49 @@ class TestNormalizeAllSeriesKana:
         result = normalize_all(data)
         assert result["series_en"] == "SPIRIT"
         assert result["series_kana"] == "スピリット"
+
+
+class TestSeriesSameAsBrand:
+    """シリーズ名がブランド名と完全一致する場合はシリーズを空欄にする（実例 3000161）
+
+    文字盤に「GREENWICH」と1回だけ印字された商品で、AIがブランド名とシリーズ名
+    の両方に同じ語を入れ、タイトルが「GREENWICH グリニッジ GREENWICH グリニッジ…」
+    と連続重複した。ブランドとシリーズの完全同名は通常あり得ないため除去する。
+    部分一致（SEIKO/GRAND SEIKO等）は正常な組み合わせなので対象外。
+    """
+
+    def test_series_same_as_brand_is_cleared(self):
+        data = {"brand_en": "GREENWICH", "series_en": "GREENWICH", "series_kana": "グリニッジ"}
+        result = normalize_all(data)
+        assert result["series_en"] == ""
+        assert result["series_kana"] == ""
+
+    def test_case_insensitive_match_is_cleared(self):
+        """大文字小文字違いでも正規化後比較のため除去される"""
+        data = {"brand_en": "GREENWICH", "series_en": "Greenwich", "series_kana": "グリニッジ"}
+        result = normalize_all(data)
+        assert result["series_en"] == ""
+        assert result["series_kana"] == ""
+
+    def test_partial_match_kept(self):
+        """部分一致（SEIKO / GRAND SEIKO）は対象外、保持する"""
+        data = {"brand_en": "SEIKO", "series_en": "GRAND SEIKO", "series_kana": "グランドセイコー"}
+        result = normalize_all(data)
+        assert result["series_en"] == "GRAND SEIKO"
+        assert result["series_kana"] == "グランドセイコー"
+
+    def test_swatch_chrono_exception_pair_kept(self):
+        """既存の機能語除外ペア（SWATCH CHRONO）に影響しない"""
+        data = {"brand_en": "SWATCH", "series_en": "CHRONO", "series_kana": "クロノ"}
+        result = normalize_all(data)
+        assert result["series_en"] == "CHRONO"
+        assert result["series_kana"] == "クロノ"
+
+    def test_casio_g_shock_kept(self):
+        data = {"brand_en": "CASIO", "series_en": "G-SHOCK", "series_kana": "ジーショック"}
+        result = normalize_all(data)
+        assert result["series_en"] == "G-SHOCK"
+        assert result["series_kana"] == "ジーショック"
 
 
 class TestNormalizeAll:

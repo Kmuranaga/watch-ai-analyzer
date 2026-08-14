@@ -59,6 +59,17 @@ def normalize_all(data: dict) -> dict:
                         kana = kana.replace(token, "")
                 result["series_kana"] = normalize_text(kana)
 
+        # ブランド名と完全一致するシリーズは除去する（実例 3000161: 文字盤に
+        # 「GREENWICH」と1回だけ印字された商品で、AIがブランド名とシリーズ名の
+        # 両方に同じ語を入れ、タイトルが「GREENWICH グリニッジ GREENWICH
+        # グリニッジ…」と連続重複した。ブランドとシリーズの完全同名は通常
+        # あり得ない。部分一致（SEIKO/GRAND SEIKO等）は正常な組み合わせのため、
+        # 完全一致のみを対象にする）
+        if result["series_en"] and result["series_en"] == normalize_brand(result.get("brand_en", "")):
+            logger.info(f"シリーズがブランド名と同一のため除去: {result.get('brand_en', '')}")
+            result["series_en"] = ""
+            result["series_kana"] = ""
+
     # 素材名正規化
     if result.get("material"):
         result["material"] = normalize_material(result["material"])
@@ -361,7 +372,16 @@ MATERIAL_MAP = {
 
 
 def normalize_material(material: str) -> str:
-    """素材名を統一形式に変換"""
+    """素材名を統一形式に変換
+
+    クライアント指示（2026-08）により「金」「樹脂」は最終出力を無効化する
+    （実例 3000658: 裏蓋刻印は「WGP / CITIZEN / 6700 / 4-67370IS / 5080609」
+    〔WGP=White Gold Plated〕で「金」の刻印は無いのに素材「金」が出力された。
+    質感推測による誤りを避けるための無効化で、樹脂製が正しい商品でも空欄に
+    なることはクライアント合意済み）。
+    「18金」「金メッキ」「シルバー925」等の刻印ベースの具体的な素材表記は
+    対象外のまま維持する。
+    """
     if not material:
         return ""
 
@@ -369,20 +389,28 @@ def normalize_material(material: str) -> str:
 
     # 完全一致で検索
     if normalized in MATERIAL_MAP:
-        return MATERIAL_MAP[normalized]
+        result = MATERIAL_MAP[normalized]
+    else:
+        # 部分一致で検索
+        result = None
+        for key, value in MATERIAL_MAP.items():
+            if key in normalized:
+                result = value
+                break
 
-    # 部分一致で検索
-    for key, value in MATERIAL_MAP.items():
-        if key in normalized:
-            return value
+        if result is None:
+            # 日本語の場合はそのまま返す
+            if any(ord(c) > 0x3000 for c in material):
+                result = material.strip()
+            else:
+                # マッチしない場合はそのまま
+                logger.debug(f"素材名の変換なし: {material}")
+                result = material.strip()
 
-    # 日本語の場合はそのまま返す
-    if any(ord(c) > 0x3000 for c in material):
-        return material.strip()
-
-    # マッチしない場合はそのまま
-    logger.debug(f"素材名の変換なし: {material}")
-    return material.strip()
+    if result in ("金", "樹脂"):
+        logger.info(f"素材「{result}」はクライアント指示により無効化: {material!r}")
+        return ""
+    return result
 
 
 # === ムーブメント変換テーブル ===
