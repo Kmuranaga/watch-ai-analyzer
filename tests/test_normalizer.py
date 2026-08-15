@@ -79,7 +79,14 @@ class TestNormalizeMaterial:
         assert normalize_material("Titanium") == "チタン"
 
     def test_gold_plated(self):
-        assert normalize_material("GP") == "金メッキ"
+        """クライアント要望（2026-08）: GP/WGPは金メッキに変換せず刻印どおり出力"""
+        assert normalize_material("GP") == "GP"
+
+    def test_wgp(self):
+        assert normalize_material("WGP") == "WGP"
+
+    def test_wgp_dotted(self):
+        assert normalize_material("W.G.P.") == "WGP"
 
     def test_k18(self):
         assert normalize_material("K18") == "18金"

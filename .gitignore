@@ -10,3 +10,7 @@ __pycache__/
 
 # Environment
 .env
+
+# 配布パッケージ（scripts/make_package.sh が生成）
+VERSION
+watch-ai-analyzer_*.zip

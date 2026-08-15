@@ -28,7 +28,7 @@ from flask import Flask, render_template, request, jsonify, Response, stream_wit
 sys.path.insert(0, str(Path(__file__).parent))
 
 import config
-from config import DEFAULT_INPUT_DIR, MAX_CONCURRENT_PRODUCTS, CSV_ENCODING
+from config import APP_VERSION, DEFAULT_INPUT_DIR, MAX_CONCURRENT_PRODUCTS, CSV_ENCODING
 from modules.folder_scanner import scan_folder
 from modules.ai_analyzer import analyze_front, analyze_back_cover, analyze_comment, register_rate_limit_callback
 from modules.normalizer import normalize_all, set_known_brands
@@ -712,6 +712,7 @@ def api_set_apikey():
 if __name__ == "__main__":
     logger.info("=" * 60)
     logger.info("腕時計AI自動解析システム - ブラウザUI版")
+    logger.info(f"watch-ai-analyzer バージョン: {APP_VERSION}")
     logger.info("http://localhost:8080 でアクセスしてください")
     logger.info("=" * 60)
     app.run(host="0.0.0.0", port=8080, debug=False, threaded=True)

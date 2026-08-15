@@ -20,7 +20,8 @@
 - "STAINLESS STEEL", "ST.STEEL", "SS" → ステンレス
 - "TITANIUM", "Ti" → チタン
 - "K18", "750" → 18金
-- "GP", "WGP" → 金メッキ
+- "GP" → GP
+- "WGP", "W.G.P." → WGP
 - "SILVER", "Ag", "925" → 銀
 - "CERAMIC" → セラミック
 - "RESIN", "PLASTIC" → 樹脂
