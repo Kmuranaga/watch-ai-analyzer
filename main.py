@@ -33,7 +33,7 @@ from datetime import datetime
 # プロジェクトルートをパスに追加
 sys.path.insert(0, str(Path(__file__).parent))
 
-from config import DEFAULT_INPUT_DIR, DEFAULT_OUTPUT_DIR, GEMINI_API_KEY, MAX_CONCURRENT_PRODUCTS
+from config import APP_VERSION, DEFAULT_INPUT_DIR, DEFAULT_OUTPUT_DIR, GEMINI_API_KEY, MAX_CONCURRENT_PRODUCTS
 from modules.folder_scanner import scan_folder, ProductImages
 from modules.ai_analyzer import (
     analyze_front, analyze_back_cover, analyze_comment,
@@ -388,6 +388,7 @@ def main():
     # ログ設定
     setup_logging(args.verbose)
     logger = logging.getLogger(__name__)
+    logger.info(f"watch-ai-analyzer バージョン: {APP_VERSION}")
 
     # バナー表示
     logger.info("=" * 60)

@@ -49,6 +49,11 @@ AI_THINKING_LEVEL = os.environ.get("AI_THINKING_LEVEL", "medium")
 # Gemini 3系の画像解像度（low/medium/high）。刻印・小さな文字の読み取りがあるため high。
 AI_MEDIA_RESOLUTION = os.environ.get("AI_MEDIA_RESOLUTION", "high")
 
+# === バージョン識別 ===
+# 配布パッケージの識別用（scripts/make_package.sh が生成。開発環境では存在しない場合あり）
+VERSION_FILE = PROJECT_ROOT / "VERSION"
+APP_VERSION = VERSION_FILE.read_text(encoding="utf-8").strip() if VERSION_FILE.exists() else "dev"
+
 # === パス設定 ===
 DEFAULT_INPUT_DIR = PROJECT_ROOT / "input"
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "output"
