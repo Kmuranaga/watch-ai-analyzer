@@ -376,12 +376,21 @@ MATERIAL_MAP = {
     # 出力する（例: 3000915 の「18K GOLD ELECTROPLATED」→ 18K）。
     # 品位刻印(K18等)は "gold" 等の汎用語より先に置くこと（部分一致は定義順のため、
     # "18K GOLD..." が "gold"→金→無効化 に食われるのを防ぐ）
+    "k24": "K24",
+    "24k": "24K",
+    "k22": "K22",
+    "22k": "22K",
     "k18": "K18",
     "18k": "18K",
     "750": "18金",
     "k14": "K14",
     "14k": "14K",
     "585": "14金",
+    "k10": "K10",
+    "10k": "10K",
+    "k9": "K9",
+    "9k": "9K",
+    "375": "9金",
     # クライアント要望（2026-08）: GP/WGPは印象への配慮から「金メッキ」に
     # 意訳せず、刻印どおりの表記(GP/WGP)で出力する
     "w.g.p.": "WGP",
@@ -467,13 +476,17 @@ def normalize_material(material: str) -> str:
                 break
 
         if result is None:
-            # 日本語の場合はそのまま返す
+            # 日本語を含むものはそのまま返す（「サンプラチナ」「ロジウムメッキ」
+            # 「10K金張り」等、変換表に無くても素材名と判断できる）
             if any(ord(c) > 0x3000 for c in material):
                 result = material.strip()
             else:
-                # マッチしない場合はそのまま
-                logger.debug(f"素材名の変換なし: {material}")
-                result = material.strip()
+                # 変換表に無い純英字の値は素材名と確認できないため出力しない
+                # （実例 3000802: 裏蓋刻印「SEIKO 030955 / PDP BACK ST.STEEL /
+                #   1520-3310」の "PDP" は SEIKO の裏蓋記号で素材名ではないが、
+                #   素材として拾われタイトルに「PDP」が出た）
+                logger.info(f"変換表に無い英字素材のため無効化: {material!r}")
+                result = ""
 
     if result in ("金", "銀", "樹脂"):
         logger.info(f"素材「{result}」はクライアント指示により無効化: {material!r}")

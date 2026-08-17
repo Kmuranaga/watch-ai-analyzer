@@ -139,6 +139,26 @@ class TestNormalizeMaterial:
     def test_sterling_silver(self):
         assert normalize_material("Sterling Silver") == "シルバー925 SV925"
 
+    def test_unknown_ascii_material_disabled(self):
+        """実例 3000802: 裏蓋記号「PDP」は素材名ではないため出力しない"""
+        assert normalize_material("PDP") == ""
+
+    def test_unknown_japanese_material_kept(self):
+        """変換表に無くても日本語なら素材名と判断してそのまま通す"""
+        assert normalize_material("サンプラチナ") == "サンプラチナ"
+        assert normalize_material("ロジウムメッキ") == "ロジウムメッキ"
+
+    def test_karat_10k_9k(self):
+        """10K/9K等の品位刻印も刻印どおり出力する（変換表の抜けで空欄化しない）"""
+        assert normalize_material("10K") == "10K"
+        assert normalize_material("K10") == "K10"
+        assert normalize_material("9K") == "9K"
+        assert normalize_material("24K") == "24K"
+
+    def test_karat_wins_over_plating_suffix(self):
+        """品位刻印は「金張り」等の後続語より優先（18K GOLD ELECTROPLATED→18K と同方針）"""
+        assert normalize_material("10K金張り") == "10K"
+
     def test_stainless_back_not_material(self):
         """実例 3000677/3000707/3000722/3000752: 「STAINLESS BACK」は裏蓋のみの
         材質でありケース素材ではないため出力しない"""
