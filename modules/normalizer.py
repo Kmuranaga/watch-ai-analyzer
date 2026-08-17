@@ -106,7 +106,8 @@ def normalize_all(data: dict) -> dict:
     # 型番正規化（モジュール番号・機能語の除去含む）
     if result.get("model_number"):
         result["model_number"] = normalize_model_number(
-            result["model_number"], result.get("brand_en", "")
+            result["model_number"], result.get("brand_en", ""),
+            result.get("series_en", "")
         )
 
     # 本体色正規化（軽い正規化のみ。色名はそのまま通す）
@@ -342,6 +343,15 @@ def _reconcile_brand_fields(result: dict) -> None:
 
 # === 素材名変換テーブル ===
 MATERIAL_MAP = {
+    # 裏蓋のみステンレスの刻印はケース素材ではないため無効化する
+    # （実例 3000677「C.G.P. / STAINLESSBACK」・3000707「14K GOLDFILLED /
+    #   STAINLESSBACK」・3000722「14K GF / STAINLESS BACK」・3000752
+    #   「RHODIUM PLATED / STAINLESS BACK」。いずれもケースは金メッキ／金張り
+    #   ／ロジウムメッキで、ステンレスなのは裏蓋だけ）
+    # 部分一致は定義順のため "stainless steel" 系より前に置くこと
+    "stainless steel back": "",
+    "stainless back": "",
+    "stainlessback": "",
     # ステンレス
     "stainless steel": "ステンレス",
     "stainless": "ステンレス",
@@ -374,6 +384,7 @@ MATERIAL_MAP = {
     "gold plated": "GP",
     "gp": "GP",
     "gold filled": "金張り",
+    "goldfilled": "金張り",
     "gf": "金張り",
     "gold": "金",
     # 銀
@@ -714,7 +725,8 @@ SERIES_FUNCTION_WORD_KANA = {
 _MODULE_PREFIX_RE = re.compile(r"^\d{3,4}-")
 
 
-def normalize_model_number(model_number: str, brand_en: str = "") -> str:
+def normalize_model_number(model_number: str, brand_en: str = "",
+                           series_en: str = "") -> str:
     """
     AIが読み取った型番を正規化する。顧客分析で判明した3類型を吸収する。
 
@@ -731,7 +743,8 @@ def normalize_model_number(model_number: str, brand_en: str = "") -> str:
 
     Args:
         model_number: AI解析の型番文字列
-        brand_en: ブランド英字名（現状は未使用。将来のあいまい補正用に受け取る）
+        brand_en: ブランド英字名（型番に混入したブランド名トークンの除去に使う）
+        series_en: シリーズ英字名（型番に混入したシリーズ名トークンの除去に使う）
 
     Returns:
         正規化後の型番（不明な場合は空文字）
@@ -762,6 +775,25 @@ def normalize_model_number(model_number: str, brand_en: str = "") -> str:
 
     if not text:
         return ""
+
+    # (c-2) 型番に混入したシリーズ名・ブランド名トークンの除去
+    #     AIが型番欄にシリーズ名を含めて返すことがある（実例 3000628:
+    #     series_en="DIASTAR" に対し型番 "DIASTAR 8" で、タイトルに
+    #     「DIASTAR」が2回出た）。残った数字のみのトークンは後段(b)が
+    #     モジュール番号として処理する。
+    #     2文字以下の語は正当な型番要素と衝突しうるため対象外にする。
+    name_tokens = {
+        t for t in (normalize_text(series_en).upper().split()
+                    + normalize_text(brand_en).upper().split())
+        if len(t) >= 3
+    }
+    if name_tokens:
+        kept = [t for t in text.split() if t not in name_tokens]
+        if len(kept) != len(text.split()):
+            logger.info(f"型番からシリーズ/ブランド名を除去: {text!r} → {' '.join(kept)!r}")
+            text = " ".join(kept)
+            if not text:
+                return ""
 
     # (d) 隣接ノイズ英字トークンの除去（gemini-3.6-flash 特有の読み取り性質）
     #     裏蓋型番の前後に隣接する短い刻印（メーカーコード等）を型番の一部として
