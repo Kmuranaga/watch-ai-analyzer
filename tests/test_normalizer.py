@@ -112,6 +112,21 @@ class TestNormalizeMaterial:
     def test_sterling_silver(self):
         assert normalize_material("Sterling Silver") == "シルバー925 SV925"
 
+    def test_stainless_back_not_material(self):
+        """実例 3000677/3000707/3000722/3000752: 「STAINLESS BACK」は裏蓋のみの
+        材質でありケース素材ではないため出力しない"""
+        assert normalize_material("STAINLESS BACK") == ""
+        assert normalize_material("STAINLESSBACK") == ""
+        assert normalize_material("Stainless Steel Back") == ""
+
+    def test_stainless_steel_still_works(self):
+        """BACK を伴わない STAINLESS STEEL は従来どおりステンレス"""
+        assert normalize_material("STAINLESS STEEL") == "ステンレス"
+
+    def test_goldfilled_no_space(self):
+        """スペースなしの GOLDFILLED も金張り"""
+        assert normalize_material("GOLDFILLED") == "金張り"
+
     def test_silver_disabled(self):
         """クライアント指示（2026-08・3000921）: 品位刻印のない「銀」は出力しない"""
         assert normalize_material("SILVER") == ""
@@ -385,6 +400,26 @@ class TestNormalizeModelNumber:
     def test_c_function_word_removed(self):
         """(c) 機能語の除去"""
         assert normalize_model_number("SARX055 AUTOMATIC") == "SARX055"
+
+    def test_c2_series_name_removed(self):
+        """(c-2) 実例 3000628: 型番 "DIASTAR 8" はシリーズ名混入。除去後の
+        「8」は(b)のモジュール番号扱いで空になる"""
+        assert normalize_model_number("DIASTAR 8", "RADO", "DIASTAR") == ""
+
+    def test_c2_series_name_removed_keeps_real_ref(self):
+        """シリーズ名を除いた本体の型番は残る"""
+        assert normalize_model_number(
+            "PRESAGE SARX055", "SEIKO", "PRESAGE") == "SARX055"
+
+    def test_c2_brand_name_removed(self):
+        assert normalize_model_number("SEIKO 7548-7000", "SEIKO") == "7548-7000"
+
+    def test_c2_short_token_not_removed(self):
+        """2文字以下のシリーズ名は正当な型番要素と衝突しうるため除去しない"""
+        assert normalize_model_number("LM 5606-7000", "SEIKO", "LM") == "5606-7000"
+
+    def test_c2_no_series_unaffected(self):
+        assert normalize_model_number("SARX055", "SEIKO", "") == "SARX055"
 
     def test_c_multiple_function_words(self):
         assert normalize_model_number("GA-100 QUARTZ CHRONOGRAPH") == "GA-100"
