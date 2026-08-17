@@ -166,12 +166,32 @@ class TestNormalizeMaterial:
         assert normalize_material("STAINLESSBACK") == ""
         assert normalize_material("Stainless Steel Back") == ""
 
+    def test_compound_karat_and_goldfilled(self):
+        """複合刻印は品位・金張りの両方を残す（実行ごとの揺れと情報欠落を防ぐ）"""
+        assert normalize_material("14K GF 40 MIC") == "14K金張り"
+        assert normalize_material("14K GOLDFILLED") == "14K金張り"
+        # 語間に空白がある表記（実例 3000799「FRONT 14K GOLD FILLED BACK STEEL」）
+        assert normalize_material("FRONT 14K GOLD FILLED BACK STEEL") == "14K金張り"
+
+    def test_compound_karat_and_rgp(self):
+        assert normalize_material("W/10K R.G.P. BEZEL") == "10K RGP"
+
+    def test_compound_karat_and_gp(self):
+        assert normalize_material("18K GP") == "18K GP"
+
+    def test_electroplated_stays_karat_only(self):
+        """クライアント指定（3000915）: GOLD ELECTROPLATED は品位のみで返す"""
+        assert normalize_material("18K GOLD ELECTROPLATED") == "18K"
+
+    def test_karat_alone_unaffected(self):
+        assert normalize_material("14K") == "14K"
+        assert normalize_material("GF") == "金張り"
+
     def test_rgp_kept_as_marking(self):
-        """実例 3000735「W/10K R.G.P. BEZEL」: R.G.P.は金張りなので
-        品位刻印「10K」に化けさせず刻印どおり RGP で出力する"""
+        """R.G.P.（金張り）は品位刻印「10K」に化けさせず刻印どおり残す
+        （品位が併記されていれば test_compound_karat_and_rgp のとおり複合表記）"""
         assert normalize_material("R.G.P.") == "RGP"
         assert normalize_material("RGP") == "RGP"
-        assert normalize_material("10K R.G.P. BEZEL") == "RGP"
 
     def test_base_metal_back_not_material(self):
         """「BASE METAL BACK」も裏蓋限定なのでケース素材にしない"""
