@@ -24,7 +24,7 @@
 - "750" → 18金
 - "GOLD FILLED", "GOLDFILLED", "GF"（品位刻印を伴わないもの） → 金張り
 - "R.G.P.", "RGP"（Rolled Gold Plate） → RGP
-- **品位刻印（14K 等）とめっき／金張り略号（GF・GOLDFILLED・R.G.P.・G.P.・W.G.P.）が併記されている場合は、どちらか一方に省略せず刻印どおり両方を返すこと**（例: "14K GF 40 MIC" → "14K GF"、"W/10K R.G.P. BEZEL" → "10K R.G.P."）。片方だけ返すと無垢と金張りの区別が失われる
+- **品位刻印（14K 等）とめっき／金張り略号（GF・G.FILLED・GOLD FILLED・GOLDFILLED・R.G.P.・G.P.・W.G.P.）が併記されている場合は、どちらか一方に省略せず刻印どおり両方を返すこと**（例: "14K GF 40 MIC" → "14K GF"、"W/10K R.G.P. BEZEL" → "10K R.G.P."、"10K G.FILLED" → "10K G.FILLED"、"FRONT 14K GOLD FILLED BACK STEEL" → "14K GOLD FILLED"）。片方だけ返すと無垢と金張りの区別が失われる
 - "GP", "C.G.P." → GP
 - "WGP", "W.G.P." → WGP
 - "925", "STERLING SILVER" → シルバー925（"SILVER" と "925" ホールマークが併記されている場合も シルバー925）
