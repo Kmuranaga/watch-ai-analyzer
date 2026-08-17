@@ -11,6 +11,7 @@ import modules.normalizer as normalizer_module
 from modules.normalizer import (
     normalize_text,
     normalize_brand,
+    normalize_color,
     normalize_material,
     normalize_movement,
     normalize_water_resistance,
@@ -64,6 +65,32 @@ class TestNormalizeBrand:
 
     def test_with_spaces(self):
         assert normalize_brand("  omega  ") == "OMEGA"
+
+
+class TestNormalizeColor:
+    """色名正規化（複数色の区切り統一）"""
+
+    def test_ideographic_comma_to_space(self):
+        """実例 3000959/3000970: コンビの時計で読点区切りが混入する"""
+        assert normalize_color("シルバー、ゴールド") == "シルバー ゴールド"
+
+    def test_slash_to_space(self):
+        assert normalize_color("シルバー/ゴールド") == "シルバー ゴールド"
+
+    def test_fullwidth_slash_to_space(self):
+        assert normalize_color("シルバー／ゴールド") == "シルバー ゴールド"
+
+    def test_halfwidth_comma_to_space(self):
+        assert normalize_color("シルバー, ゴールド") == "シルバー ゴールド"
+
+    def test_nakaguro_to_space(self):
+        assert normalize_color("シルバー・ゴールド") == "シルバー ゴールド"
+
+    def test_single_color_unchanged(self):
+        assert normalize_color("シルバー") == "シルバー"
+
+    def test_empty(self):
+        assert normalize_color("") == ""
 
 
 class TestNormalizeMaterial:
