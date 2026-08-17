@@ -464,7 +464,11 @@ _PLATING_KEYS = ("r.g.p.", "rgp", "w.g.p.", "wgp", "goldfilled", "gf", "gp")
 # 短い略号は誤検出しやすいため、ここには十分に長い語のみを置く。
 # "GOLD ELECTROPLATED" は "goldplated" を含まないため複合にならず、
 # クライアント指定どおり品位のみ（18K）で返る
-_PLATING_PHRASES = (("goldfilled", "金張り"), ("goldplated", "GP"))
+_PLATING_PHRASES = (("goldfilled", "金張り"), ("gfilled", "金張り"),
+                    ("goldplated", "GP"))
+# 正規化済みの複合表記（"14K金張り" "10K RGP"）。再度 normalize_material に
+# 通されても品位だけに縮まないよう、そのまま返すために使う（冪等性の担保）
+_COMPOUND_RE = re.compile(r"(?:K\d{1,2}|\d{1,2}K)(?:金張り|[  ](?:RGP|GP|WGP))")
 
 
 def _compound_marking(normalized: str) -> str:
@@ -503,6 +507,10 @@ def normalize_material(material: str) -> str:
     """
     if not material:
         return ""
+
+    # 既に正規化済みの複合表記はそのまま返す（二重適用で品位だけに縮むのを防ぐ）
+    if _COMPOUND_RE.fullmatch(normalize_text(material)):
+        return normalize_text(material)
 
     normalized = normalize_text(material).lower()
 

@@ -155,9 +155,9 @@ class TestNormalizeMaterial:
         assert normalize_material("9K") == "9K"
         assert normalize_material("24K") == "24K"
 
-    def test_karat_wins_over_plating_suffix(self):
-        """品位刻印は「金張り」等の後続語より優先（18K GOLD ELECTROPLATED→18K と同方針）"""
-        assert normalize_material("10K金張り") == "10K"
+    def test_japanese_compound_kept(self):
+        """日本語の複合表記もそのまま維持する（品位だけに縮めない）"""
+        assert normalize_material("10K金張り") == "10K金張り"
 
     def test_stainless_back_not_material(self):
         """実例 3000677/3000707/3000722/3000752: 「STAINLESS BACK」は裏蓋のみの
@@ -172,6 +172,13 @@ class TestNormalizeMaterial:
         assert normalize_material("14K GOLDFILLED") == "14K金張り"
         # 語間に空白がある表記（実例 3000799「FRONT 14K GOLD FILLED BACK STEEL」）
         assert normalize_material("FRONT 14K GOLD FILLED BACK STEEL") == "14K金張り"
+        # 省略表記（実例 3000612「10K G.FILLED」）
+        assert normalize_material("10K G.FILLED") == "10K金張り"
+
+    def test_compound_is_idempotent(self):
+        """正規化済みの複合表記を再度通しても品位だけに縮まない"""
+        for v in ("14K金張り", "10K金張り", "10K RGP", "18K GP", "14K WGP"):
+            assert normalize_material(v) == v
 
     def test_compound_karat_and_rgp(self):
         assert normalize_material("W/10K R.G.P. BEZEL") == "10K RGP"
