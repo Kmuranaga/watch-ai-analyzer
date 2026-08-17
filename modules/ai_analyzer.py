@@ -499,6 +499,48 @@ def recover_model_number_upscaled(back_image_path: Path,
     return majority_nonempty(reads)
 
 
+# 素材のめっき併記リカバリ（正規化後の素材が品位のみ「10K」等の時のみ発火）
+MATERIAL_RECOVERY_SAMPLES = 3
+
+_PLATING_RECHECK_PROMPT = """\
+この腕時計の裏蓋画像で、品位刻印「{karat}」の周辺・同一行に、めっき／金張りを示す
+表記があるかだけを確認してください。
+
+- "GF", "G.F.", "GOLD FILLED", "GOLDFILLED", "G.FILLED" → GF
+- "R.G.P.", "RGP", "ROLLED GOLD", "ROLLED GOLD PLATE" → RGP
+- "G.P.", "GP", "GOLD PLATED" → GP
+- "W.G.P.", "WGP" → WGP
+- "GOLD ELECTROPLATED", "ELECTROPLATED" → ELECTROPLATED
+- 上記いずれの表記も無い → NONE
+
+刻印を推測で補わず、画像で視認できる場合のみ該当値を返すこと。
+JSONのみを出力: {{"plating": "GF" | "RGP" | "GP" | "WGP" | "ELECTROPLATED" | "NONE"}}
+"""
+
+
+def recheck_material_plating(back_image_path: Path, karat: str,
+                             k: int = MATERIAL_RECOVERY_SAMPLES) -> str:
+    """品位刻印にめっき／金張り表記が併記されていないかを裏蓋拡大画像で焦点確認する。
+
+    通常の裏蓋解析は項目が多く、複合刻印（例「10K R.G.P.」「14K GF」）の
+    めっき側を落として品位だけ返すことがある（実行ごとに揺れる）。正規化後の
+    素材が品位のみだった時だけ、この専用プロンプトで k 回読み最頻非空値を返す。
+    返り値は "GF"/"RGP"/"GP"/"WGP"/"ELECTROPLATED"/""（無しまたは判定不能）。
+    """
+    from modules.image_preprocess import upscale_to_bytes
+    from modules.normalizer import majority_nonempty
+
+    prompt = _PLATING_RECHECK_PROMPT.format(karat=karat)
+    valid = {"GF", "RGP", "GP", "WGP", "ELECTROPLATED"}
+    reads = []
+    for _ in range(k):
+        data = upscale_to_bytes(back_image_path, MODEL_RECOVERY_SCALE)
+        r = _call_api_bytes(prompt, data, label=f"{back_image_path.name}#plating")
+        v = (r.get("plating") or "").strip().upper()
+        reads.append(v if v in valid else "")
+    return majority_nonempty(reads)
+
+
 def classify_series_is_slogan(series: str) -> bool:
     """シリーズ文字列が英語の慣用句/スローガンか（True）、シリーズ・商品名か（False）を判定する。
 

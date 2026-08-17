@@ -379,6 +379,8 @@ MATERIAL_MAP = {
     # 金メッキ品が10金無垢と誤認される表記「10K」になる）
     "r.g.p.": "RGP",
     "rgp": "RGP",
+    "rolled gold plate": "RGP",
+    "rolled gold": "RGP",
     # クライアント要望（2026-08）: K18/18K は価値が異なるため刻印どおりに区別して
     # 出力する（例: 3000915 の「18K GOLD ELECTROPLATED」→ 18K）。
     # 品位刻印(K18等)は "gold" 等の汎用語より先に置くこと（部分一致は定義順のため、
@@ -465,7 +467,7 @@ _PLATING_KEYS = ("r.g.p.", "rgp", "w.g.p.", "wgp", "goldfilled", "gf", "gp")
 # "GOLD ELECTROPLATED" は "goldplated" を含まないため複合にならず、
 # クライアント指定どおり品位のみ（18K）で返る
 _PLATING_PHRASES = (("goldfilled", "金張り"), ("gfilled", "金張り"),
-                    ("goldplated", "GP"))
+                    ("rolledgold", "RGP"), ("goldplated", "GP"))
 # 正規化済みの複合表記（"14K金張り" "10K RGP"）。再度 normalize_material に
 # 通されても品位だけに縮まないよう、そのまま返すために使う（冪等性の担保）
 _COMPOUND_RE = re.compile(r"(?:K\d{1,2}|\d{1,2}K)(?:金張り|[  ](?:RGP|GP|WGP))")

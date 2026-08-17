@@ -25,6 +25,7 @@ Watch AI Auto-Analysis System - CLI Entry Point
 
 import argparse
 import logging
+import re
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -37,7 +38,7 @@ from config import APP_VERSION, DEFAULT_INPUT_DIR, DEFAULT_OUTPUT_DIR, GEMINI_AP
 from modules.folder_scanner import scan_folder, ProductImages
 from modules.ai_analyzer import (
     analyze_front, analyze_back_cover, analyze_comment,
-    recover_model_number_upscaled,
+    recover_model_number_upscaled, recheck_material_plating,
     classify_series_is_slogan,
     create_batch_requests, submit_batch, poll_batch,
     retrieve_batch_results, parse_batch_results_for_product,
@@ -121,6 +122,32 @@ def apply_model_number_recovery(product: ProductImages, back_data: dict) -> None
             back_data["model_number"] = recovered
     except Exception as e:
         logger.error(f"型番リカバリエラー: {e}")
+
+
+# 品位のみの素材表記（10K / K18 等）。めっき併記リカバリの発火条件
+_BARE_KARAT_RE = re.compile(r"^(?:K\d{1,2}|\d{1,2}K)$")
+
+
+def apply_material_plating_recovery(product: ProductImages, result: ProductResult) -> None:
+    """素材のめっき併記リカバリ（single/batch 共通）。正規化後の素材が品位のみ
+    （「10K」等）の時だけ、裏蓋を拡大してめっき／金張り表記の有無を焦点確認し、
+    複合表記（10K金張り・10K RGP 等）へ復元する。通常の裏蓋解析は項目が多く、
+    複合刻印のめっき側を落として品位だけ返す揺れがある（実例 3000639/3000659/
+    3000758）。ELECTROPLATED はクライアント指定（3000915）により品位のみを維持。"""
+    logger = logging.getLogger(__name__)
+    if not product.back_cover_image or not _BARE_KARAT_RE.match(result.material or ""):
+        return
+    try:
+        plating = recheck_material_plating(product.back_cover_image, result.material)
+    except Exception as e:
+        logger.error(f"素材めっきリカバリエラー: {e}")
+        return
+    if not plating or plating == "ELECTROPLATED":
+        return
+    suffix = "金張り" if plating == "GF" else f" {plating}"
+    logger.info(f"[{product.product_id}] 素材のめっき併記を回収: "
+                f"{result.material} → {result.material}{suffix}")
+    result.material = f"{result.material}{suffix}"
 
 
 def apply_series_slogan_filter(product: ProductImages, result: ProductResult) -> None:
@@ -272,6 +299,9 @@ def process_single_product(
 
     # --- Step 5.5: シリーズのスローガン除外（複合フィルタ）---
     apply_series_slogan_filter(product, result)
+
+    # 素材が品位のみの場合、めっき併記刻印を焦点確認して複合表記へ復元
+    apply_material_plating_recovery(product, result)
 
     # --- Step 6: カテゴリマッピング ---
     # ブランドカナは mapping 登録があれば常に mapping を優先（AIカナより優先）
@@ -524,6 +554,9 @@ def main():
 
             # シリーズのスローガン除外（single と共通のヘルパー）
             apply_series_slogan_filter(product, result)
+
+            # 素材が品位のみの場合、めっき併記刻印を焦点確認して複合表記へ復元
+            apply_material_plating_recovery(product, result)
 
             # ブランドカナは mapping 登録があれば常に mapping を優先（AIカナより優先）
             apply_mapping_kana_priority(result, mapper)

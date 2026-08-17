@@ -183,6 +183,11 @@ class TestNormalizeMaterial:
     def test_compound_karat_and_rgp(self):
         assert normalize_material("W/10K R.G.P. BEZEL") == "10K RGP"
 
+    def test_rolled_gold(self):
+        """実例 3000659「ROLLED GOLD / 14K50M.C.R / STAINLESS BACK」"""
+        assert normalize_material("ROLLED GOLD") == "RGP"
+        assert normalize_material("14K ROLLED GOLD") == "14K RGP"
+
     def test_compound_karat_and_gp(self):
         assert normalize_material("18K GP") == "18K GP"
 
