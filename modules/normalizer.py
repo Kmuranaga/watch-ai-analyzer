@@ -12,6 +12,9 @@ from config import DISCARD_NON_PRINTED_BRAND
 
 logger = logging.getLogger(__name__)
 
+# ひらがな・カタカナ（半角含む）・長音の検出用
+_KANA_RE = re.compile(r"[ぁ-ゖァ-ヺーｦ-ﾟ]")
+
 
 def normalize_all(data: dict) -> dict:
     """全フィールドに正規化処理を適用する"""
@@ -70,13 +73,23 @@ def normalize_all(data: dict) -> dict:
             result["series_en"] = ""
             result["series_kana"] = ""
 
-    # シリーズカナにカナが1文字も無ければ読みではないため除去する
-    # （実例 3000910: series_en="THE 42-20" / series_kana="42-20" / 型番="42-20"
-    #   でタイトルに同じ語が3回出た。英数字だけのカナ欄はシリーズ英字の重複でしかない）
+    # シリーズカナから、シリーズ英字に既にある英数字トークンを取り除き、
+    # カナが1文字も残らなければ全体を除去する（カナ欄の役割は「読み」であり
+    # 英数字の再掲はタイトル重複にしかならない）
+    # （実例 3000910: series_kana="42-20" がシリーズ英字・型番と重複して3連出力。
+    #   実例 3000693: series_kana="コスモスター V2" の V2 がシリーズ英字と重複）
     series_kana = result.get("series_kana", "")
-    if series_kana and not re.search(r"[ぁ-ゖァ-ヺーｦ-ﾟ]", series_kana):
-        logger.info(f"シリーズカナにカナが無いため除去: {series_kana!r}")
-        result["series_kana"] = ""
+    if series_kana:
+        en_tokens = {t.casefold() for t in result.get("series_en", "").split()}
+        cleaned = " ".join(
+            t for t in series_kana.split()
+            if _KANA_RE.search(t) or t.casefold() not in en_tokens
+        )
+        if not _KANA_RE.search(cleaned):
+            cleaned = ""
+        if cleaned != series_kana:
+            logger.info(f"シリーズカナの英字重複/非カナを除去: {series_kana!r} → {cleaned!r}")
+            result["series_kana"] = cleaned
 
     # 素材名正規化
     if result.get("material"):
