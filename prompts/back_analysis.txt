@@ -17,12 +17,13 @@
 - 読み取れない項目は空文字 "" を返すこと。
 
 ## 素材判定ルール
-- **"STAINLESS BACK", "STAINLESSBACK", "STAINLESS STEEL BACK" は「裏蓋のみステンレス」の意味であり、ケース素材ではない。** この刻印を根拠に「ステンレス」と判定してはならない。同じ裏蓋にケース素材の刻印（"14K GF", "GOLD FILLED", "C.G.P.", "RHODIUM PLATED" 等）があればそちらを採用し、無ければ空文字 "" を返す
+- **"...BACK" を伴う素材刻印（"STAINLESS BACK", "STAINLESSBACK", "STAINLESS STEEL BACK", "BASE METAL BACK" 等）は「裏蓋のみその素材」の意味であり、ケース素材ではない。** この刻印を根拠に素材を判定してはならない。同じ裏蓋にケース素材の刻印（"14K GF", "GOLD FILLED", "C.G.P.", "10K R.G.P.", "RHODIUM PLATED", "BASE METAL BEZEL" 等）があればそちらを採用し、無ければ空文字 "" を返す
 - "STAINLESS STEEL", "ST.STEEL", "SS"（BACK を伴わないもの） → ステンレス
 - "TITANIUM", "Ti" → チタン
 - "K18" → K18、"18K" → 18K（K18と18Kは価値が異なるため、刻印どおりの並び順で区別して返すこと。"18K GOLD ELECTROPLATED" のような刻印も 18K）
 - "750" → 18金
 - "GOLD FILLED", "GOLDFILLED", "GF"（品位刻印を伴わないもの） → 金張り
+- "R.G.P.", "RGP"（Rolled Gold Plate） → RGP（"10K R.G.P." のように品位が併記されていても RGP。金張りであり無垢ではないため品位のみで返さないこと）
 - "GP", "C.G.P." → GP
 - "WGP", "W.G.P." → WGP
 - "925", "STERLING SILVER" → シルバー925（"SILVER" と "925" ホールマークが併記されている場合も シルバー925）
