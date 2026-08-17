@@ -536,6 +536,21 @@ class TestNormalizeAllSeriesKana:
         assert result["series_en"] == "CHRONO"
         assert result["series_kana"] == "クロノ"
 
+    def test_kana_less_series_kana_cleared(self):
+        """実例 3000910: series_kana="42-20"（カナ無し）は読みではないため除去"""
+        data = {"brand_en": "NIXON", "series_en": "THE 42-20",
+                "series_kana": "42-20", "model_number": "42-20"}
+        result = normalize_all(data)
+        assert result["series_en"] == "THE 42-20"
+        assert result["series_kana"] == ""
+
+    def test_mixed_kana_series_kana_kept(self):
+        """カナを含む series_kana（Gショック等）は維持する"""
+        data = {"brand_en": "CASIO", "series_en": "G-SHOCK",
+                "series_kana": "Gショック"}
+        result = normalize_all(data)
+        assert result["series_kana"] == "Gショック"
+
     def test_lk_expansion_overwrites_wrong_kana(self):
         """LK→LUKIA 展開時、AIの誤カナ「エルケー」を「ルキア」で上書きする"""
         data = {"brand_en": "SEIKO", "series_en": "LK", "series_kana": "エルケー"}

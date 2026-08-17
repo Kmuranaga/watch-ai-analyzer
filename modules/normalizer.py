@@ -70,6 +70,14 @@ def normalize_all(data: dict) -> dict:
             result["series_en"] = ""
             result["series_kana"] = ""
 
+    # シリーズカナにカナが1文字も無ければ読みではないため除去する
+    # （実例 3000910: series_en="THE 42-20" / series_kana="42-20" / 型番="42-20"
+    #   でタイトルに同じ語が3回出た。英数字だけのカナ欄はシリーズ英字の重複でしかない）
+    series_kana = result.get("series_kana", "")
+    if series_kana and not re.search(r"[ぁ-ゖァ-ヺーｦ-ﾟ]", series_kana):
+        logger.info(f"シリーズカナにカナが無いため除去: {series_kana!r}")
+        result["series_kana"] = ""
+
     # 素材名正規化
     if result.get("material"):
         result["material"] = normalize_material(result["material"])

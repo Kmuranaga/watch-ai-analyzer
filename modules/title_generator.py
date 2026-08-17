@@ -50,8 +50,22 @@ def generate_title(
         additional_word,
     ]
 
-    # 空文字の要素を除外して結合
-    title = " ".join(p for p in parts if p)
+    # 空文字の要素を除外して結合。
+    # 既出のトークンだけで構成される要素はスキップする
+    # （実例 3000910: series_en="THE 42-20" と model_number="42-20" で
+    #   同じ語がタイトルに複数回出た。新規トークンを含む要素はそのまま通す）
+    seen: set[str] = set()
+    kept = []
+    for p in parts:
+        if not p:
+            continue
+        tokens = [t.casefold() for t in p.split()]
+        if all(t in seen for t in tokens):
+            logger.info(f"タイトルの重複要素を除去: {p!r}")
+            continue
+        kept.append(p)
+        seen.update(tokens)
+    title = " ".join(kept)
 
     # title_prefix を先頭に追加
     if title_prefix:
