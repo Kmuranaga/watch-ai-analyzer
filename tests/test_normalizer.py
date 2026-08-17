@@ -586,6 +586,21 @@ class TestNormalizeAllSeriesKana:
         result = normalize_all(data)
         assert result["series_kana"] == "コスモスター"
 
+    def test_brand_kana_dup_stripped_from_series_kana(self):
+        """実例 3000772: series_kana="ファイン セイコー" の「セイコー」は
+        ブランドカナと重複するため除去"""
+        data = {"brand_en": "SEIKO", "brand_kana": "セイコー",
+                "series_en": "FINE", "series_kana": "ファイン セイコー"}
+        result = normalize_all(data)
+        assert result["series_kana"] == "ファイン"
+
+    def test_joined_kana_with_brand_name_kept(self):
+        """結合形（レディセイコー/グランドセイコー）は1トークンなので維持"""
+        data = {"brand_en": "SEIKO", "brand_kana": "セイコー",
+                "series_en": "LADY SEIKO", "series_kana": "レディセイコー"}
+        result = normalize_all(data)
+        assert result["series_kana"] == "レディセイコー"
+
     def test_ascii_token_not_in_series_en_kept(self):
         """シリーズ英字に無い英数字トークンは維持する"""
         data = {"brand_en": "SEIKO", "series_en": "LORD MATIC",

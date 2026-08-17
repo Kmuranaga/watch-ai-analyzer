@@ -73,22 +73,27 @@ def normalize_all(data: dict) -> dict:
             result["series_en"] = ""
             result["series_kana"] = ""
 
-    # シリーズカナから、シリーズ英字に既にある英数字トークンを取り除き、
+    # シリーズカナから、シリーズ英字・ブランドカナに既出のトークンを取り除き、
     # カナが1文字も残らなければ全体を除去する（カナ欄の役割は「読み」であり
-    # 英数字の再掲はタイトル重複にしかならない）
+    # 既出語の再掲はタイトル重複にしかならない）
     # （実例 3000910: series_kana="42-20" がシリーズ英字・型番と重複して3連出力。
-    #   実例 3000693: series_kana="コスモスター V2" の V2 がシリーズ英字と重複）
+    #   実例 3000693: series_kana="コスモスター V2" の V2 がシリーズ英字と重複。
+    #   実例 3000772: series_kana="ファイン セイコー" の「セイコー」がブランドカナ
+    #   と重複。分かち書きされた時だけ重複が見えるため、結合形「レディセイコー」
+    #   「グランドセイコー」は1トークンとして対象外になる）
     series_kana = result.get("series_kana", "")
     if series_kana:
-        en_tokens = {t.casefold() for t in result.get("series_en", "").split()}
+        dup_tokens = {t.casefold() for t in result.get("series_en", "").split()}
+        dup_tokens |= {
+            t.casefold() for t in normalize_text(result.get("brand_kana", "")).split()
+        }
         cleaned = " ".join(
-            t for t in series_kana.split()
-            if _KANA_RE.search(t) or t.casefold() not in en_tokens
+            t for t in series_kana.split() if t.casefold() not in dup_tokens
         )
         if not _KANA_RE.search(cleaned):
             cleaned = ""
         if cleaned != series_kana:
-            logger.info(f"シリーズカナの英字重複/非カナを除去: {series_kana!r} → {cleaned!r}")
+            logger.info(f"シリーズカナの重複/非カナトークンを除去: {series_kana!r} → {cleaned!r}")
             result["series_kana"] = cleaned
 
     # 素材名正規化
