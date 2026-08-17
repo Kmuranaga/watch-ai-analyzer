@@ -454,6 +454,41 @@ def normalize_color(color: str) -> str:
     return normalize_text(text)
 
 
+# 品位刻印とめっき／金張り略号の複合刻印を組み立てるためのキー（MATERIAL_MAP 内）
+# 桁の多い順に並べ、トークン完全一致で判定する（"gf" 等が他語に埋もれた
+# 部分一致で誤検出するのを防ぐ）
+_KARAT_KEYS = ("k24", "24k", "k22", "22k", "k18", "18k",
+               "k14", "14k", "k10", "10k", "k9", "9k")
+_PLATING_KEYS = ("r.g.p.", "rgp", "w.g.p.", "wgp", "goldfilled", "gf", "gp")
+# 語間に空白が入る表記用（実例 3000799「FRONT 14K GOLD FILLED / BACK STEEL」）。
+# 短い略号は誤検出しやすいため、ここには十分に長い語のみを置く。
+# "GOLD ELECTROPLATED" は "goldplated" を含まないため複合にならず、
+# クライアント指定どおり品位のみ（18K）で返る
+_PLATING_PHRASES = (("goldfilled", "金張り"), ("goldplated", "GP"))
+
+
+def _compound_marking(normalized: str) -> str:
+    """品位刻印とめっき／金張り略号が併記された複合刻印を両方残した表記で返す。
+
+    片方に潰すと、同じ刻印でも実行ごとにどちらが返るかで結果が揺れ
+    （実例 3000707/3000742/3000799 が「14K」と「金張り」を往復）、
+    無垢と金張りの区別も失われる。該当しなければ空文字を返す。
+    """
+    tokens = set(normalized.replace("/", " ").split())
+    karat = next((MATERIAL_MAP[k] for k in _KARAT_KEYS if k in tokens), "")
+    if not karat:
+        return ""
+    plating = next((MATERIAL_MAP[k] for k in _PLATING_KEYS if k in tokens), "")
+    if not plating:
+        compact = normalized.replace(" ", "").replace(".", "")
+        plating = next((v for k, v in _PLATING_PHRASES if k in compact), "")
+    if not plating:
+        return ""
+    # 日本語表記（金張り）は連結、英字略号（RGP/GP/WGP）は空白区切り
+    sep = "" if any(ord(c) > 0x3000 for c in plating) else " "
+    return f"{karat}{sep}{plating}"
+
+
 def normalize_material(material: str) -> str:
     """素材名を統一形式に変換
 
@@ -470,6 +505,11 @@ def normalize_material(material: str) -> str:
         return ""
 
     normalized = normalize_text(material).lower()
+
+    # 複合刻印（"14K GF" / "10K R.G.P." 等）は品位・めっき両方を残す
+    compound = _compound_marking(normalized)
+    if compound:
+        return compound
 
     # 完全一致で検索
     if normalized in MATERIAL_MAP:
