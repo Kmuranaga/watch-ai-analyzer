@@ -19,10 +19,12 @@
 ## 素材判定ルール
 - "STAINLESS STEEL", "ST.STEEL", "SS" → ステンレス
 - "TITANIUM", "Ti" → チタン
-- "K18", "750" → 18金
+- "K18" → K18、"18K" → 18K（K18と18Kは価値が異なるため、刻印どおりの並び順で区別して返すこと。"18K GOLD ELECTROPLATED" のような刻印も 18K）
+- "750" → 18金
 - "GP" → GP
 - "WGP", "W.G.P." → WGP
-- "SILVER", "Ag", "925" → 銀
+- "925", "STERLING SILVER" → シルバー925（"SILVER" と "925" ホールマークが併記されている場合も シルバー925）
+- "SILVER", "Ag" のみで925等の品位刻印が無い → 銀
 - "CERAMIC" → セラミック
 - "RESIN", "PLASTIC" → 樹脂
 - "BASE METAL" → ベースメタル
