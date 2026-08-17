@@ -89,13 +89,33 @@ class TestNormalizeMaterial:
         assert normalize_material("W.G.P.") == "WGP"
 
     def test_k18(self):
-        assert normalize_material("K18") == "18金"
+        """クライアント要望（2026-08）: K18/18Kは価値が異なるため刻印どおり区別"""
+        assert normalize_material("K18") == "K18"
+
+    def test_18k(self):
+        assert normalize_material("18K") == "18K"
+
+    def test_18k_gold_electroplated(self):
+        """実例 3000915: 「18K GOLD ELECTROPLATED」刻印 → 18K（金に食われない）"""
+        assert normalize_material("18K GOLD ELECTROPLATED") == "18K"
 
     def test_750(self):
         assert normalize_material("750") == "18金"
 
+    def test_925(self):
+        """実例 3000921: 925刻印 → シルバー925 SV925（銀だと色と誤認されるため）"""
+        assert normalize_material("925") == "シルバー925 SV925"
+
+    def test_silver925_ja(self):
+        assert normalize_material("シルバー925") == "シルバー925 SV925"
+
     def test_sterling_silver(self):
-        assert normalize_material("Sterling Silver") == "シルバー925"
+        assert normalize_material("Sterling Silver") == "シルバー925 SV925"
+
+    def test_silver_disabled(self):
+        """クライアント指示（2026-08・3000921）: 品位刻印のない「銀」は出力しない"""
+        assert normalize_material("SILVER") == ""
+        assert normalize_material("銀") == ""
 
     def test_ceramic(self):
         assert normalize_material("ceramic") == "セラミック"
@@ -116,7 +136,7 @@ class TestNormalizeMaterial:
         assert normalize_material("GOLD") == ""
 
     def test_18k_kept(self):
-        """刻印ベースの「18金」は維持する（無効化対象は「金」「樹脂」のみ）"""
+        """刻印ベースの「18金」は維持する（無効化対象は「金」「銀」「樹脂」のみ）"""
         assert normalize_material("18金") == "18金"
 
     def test_gold_plating_kept(self):
