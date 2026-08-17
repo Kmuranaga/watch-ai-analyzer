@@ -115,13 +115,13 @@ def normalize_all(data: dict) -> dict:
             result.get("series_en", "")
         )
 
-    # 本体色正規化（軽い正規化のみ。色名はそのまま通す）
+    # 本体色正規化（色名はそのまま通し、複数色の区切りのみ整える）
     if result.get("body_color"):
-        result["body_color"] = normalize_text(result["body_color"])
+        result["body_color"] = normalize_color(result["body_color"])
 
-    # 文字盤色正規化（軽い正規化のみ）
+    # 文字盤色正規化
     if result.get("dial_color"):
-        result["dial_color"] = normalize_text(result["dial_color"])
+        result["dial_color"] = normalize_color(result["dial_color"])
 
     # 針数正規化（表記ゆれ吸収）
     if result.get("hand_count"):
@@ -418,6 +418,24 @@ MATERIAL_MAP = {
     "combi": "コンビ",
     "two-tone": "コンビ",
 }
+
+
+def normalize_color(color: str) -> str:
+    """色名を正規化する。色名自体は変換せず、複数色の区切りのみ整える。
+
+    コンビ（ツートン）の時計では AI が複数色を返すが、その区切りに読点を
+    使うためタイトルに「シルバー、ゴールド」と読点が混入していた
+    （実例 3000959 BALLY・3000970 CYMA。いずれもペアウォッチだが、
+    読点の原因はセット販売ではなく1本ごとのシルバー×ゴールドのコンビ）。
+    タイトルは半角スペース区切りで組み立てるため、区切り文字を統一する。
+    """
+    if not color:
+        return ""
+
+    # normalize_text(NFKC) 後は全角記号が半角化されている（／→/、，→,）
+    text = normalize_text(color)
+    text = re.sub(r"\s*[、,/・]\s*", " ", text)
+    return normalize_text(text)
 
 
 def normalize_material(material: str) -> str:
