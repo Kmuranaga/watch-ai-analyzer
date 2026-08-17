@@ -544,6 +544,20 @@ class TestNormalizeAllSeriesKana:
         assert result["series_en"] == "THE 42-20"
         assert result["series_kana"] == ""
 
+    def test_ascii_token_dup_stripped_from_kana(self):
+        """実例 3000693: series_kana="コスモスター V2" の V2 はシリーズ英字の重複なので除去"""
+        data = {"brand_en": "CITIZEN", "series_en": "COSMO STAR V2",
+                "series_kana": "コスモスター V2"}
+        result = normalize_all(data)
+        assert result["series_kana"] == "コスモスター"
+
+    def test_ascii_token_not_in_series_en_kept(self):
+        """シリーズ英字に無い英数字トークンは維持する"""
+        data = {"brand_en": "SEIKO", "series_en": "LORD MATIC",
+                "series_kana": "ロードマチック 25"}
+        result = normalize_all(data)
+        assert result["series_kana"] == "ロードマチック 25"
+
     def test_mixed_kana_series_kana_kept(self):
         """カナを含む series_kana（Gショック等）は維持する"""
         data = {"brand_en": "CASIO", "series_en": "G-SHOCK",
