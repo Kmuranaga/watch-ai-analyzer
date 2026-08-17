@@ -43,6 +43,46 @@ class TestGenerateTitle:
         assert title == ""
 
 
+class TestTitleDedup:
+    """実例 3000910: NIXON THE 42-20 で同じ語がタイトルに3回出た重複の除去"""
+
+    def test_model_number_in_series_not_repeated(self):
+        title = generate_title(
+            brand_en="NIXON",
+            brand_kana="ニクソン",
+            series_en="THE 42-20",
+            model_number="42-20",
+            body_color="シルバー",
+        )
+        assert title == "NIXON ニクソン THE 42-20 シルバー"
+
+    def test_series_kana_dup_not_repeated(self):
+        """カナ欄に英数字が入った場合もタイトル側で重複しない（正規化側でも除去される）"""
+        title = generate_title(
+            brand_en="NIXON",
+            series_en="THE 42-20",
+            series_kana="42-20",
+            model_number="42-20",
+        )
+        assert title == "NIXON THE 42-20"
+
+    def test_new_tokens_kept(self):
+        """新規トークンを含む要素は落とさない（部分一致は正常な組み合わせ）"""
+        title = generate_title(
+            brand_en="SEIKO",
+            series_en="GRAND SEIKO",
+            model_number="SBGX261",
+        )
+        assert title == "SEIKO GRAND SEIKO SBGX261"
+
+    def test_case_insensitive_dedup(self):
+        title = generate_title(
+            series_en="THE 42-20",
+            model_number="42-20",
+        )
+        assert title == "THE 42-20"
+
+
 class TestColorInTitle:
     """仕様: 本体色はタイトルに含めるが、文字盤色はタイトルから除外する（出力結果には別途保持）"""
 
