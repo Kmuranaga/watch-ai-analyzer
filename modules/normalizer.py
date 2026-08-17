@@ -357,6 +357,7 @@ MATERIAL_MAP = {
     "stainless steel back": "",
     "stainless back": "",
     "stainlessback": "",
+    "base metal back": "",
     # ステンレス
     "stainless steel": "ステンレス",
     "stainless": "ステンレス",
@@ -372,6 +373,12 @@ MATERIAL_MAP = {
     "チタン": "チタン",
     "チタニウム": "チタン",
     # 金
+    # R.G.P.(Rolled Gold Plate=金張り) は GP/WGP と同系統の刻印略号のため、
+    # 刻印どおり RGP で出力する。品位刻印より前に置くこと（後ろだと
+    # 実例 3000735「W/10K R.G.P. BEZEL / BASE METAL BACK」が "10k" に食われ、
+    # 金メッキ品が10金無垢と誤認される表記「10K」になる）
+    "r.g.p.": "RGP",
+    "rgp": "RGP",
     # クライアント要望（2026-08）: K18/18K は価値が異なるため刻印どおりに区別して
     # 出力する（例: 3000915 の「18K GOLD ELECTROPLATED」→ 18K）。
     # 品位刻印(K18等)は "gold" 等の汎用語より先に置くこと（部分一致は定義順のため、

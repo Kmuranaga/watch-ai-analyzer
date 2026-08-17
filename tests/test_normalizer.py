@@ -166,6 +166,21 @@ class TestNormalizeMaterial:
         assert normalize_material("STAINLESSBACK") == ""
         assert normalize_material("Stainless Steel Back") == ""
 
+    def test_rgp_kept_as_marking(self):
+        """実例 3000735「W/10K R.G.P. BEZEL」: R.G.P.は金張りなので
+        品位刻印「10K」に化けさせず刻印どおり RGP で出力する"""
+        assert normalize_material("R.G.P.") == "RGP"
+        assert normalize_material("RGP") == "RGP"
+        assert normalize_material("10K R.G.P. BEZEL") == "RGP"
+
+    def test_base_metal_back_not_material(self):
+        """「BASE METAL BACK」も裏蓋限定なのでケース素材にしない"""
+        assert normalize_material("BASE METAL BACK") == ""
+
+    def test_base_metal_bezel_kept(self):
+        """実例 3000719: BEZEL 側の刻印はケース素材として採用する"""
+        assert normalize_material("BASE METAL BEZEL") == "ベースメタル"
+
     def test_stainless_steel_still_works(self):
         """BACK を伴わない STAINLESS STEEL は従来どおりステンレス"""
         assert normalize_material("STAINLESS STEEL") == "ステンレス"
