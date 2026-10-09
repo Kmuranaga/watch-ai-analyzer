@@ -35,7 +35,7 @@ from datetime import datetime
 sys.path.insert(0, str(Path(__file__).parent))
 
 from config import APP_VERSION, DEFAULT_INPUT_DIR, DEFAULT_OUTPUT_DIR, GEMINI_API_KEY, MAX_CONCURRENT_PRODUCTS
-from modules.folder_scanner import scan_folder, ProductImages
+from modules.folder_scanner import scan_folder, ProductImages, BACK_COVER_MISSING_MSG
 from modules.ai_analyzer import (
     analyze_front, analyze_back_cover, analyze_comment,
     recover_model_number_upscaled, recheck_material_plating,
@@ -243,7 +243,7 @@ def process_single_product(
         if product.back_cover_image:
             futures[executor.submit(analyze_back_cover, product.back_cover_image)] = "back"
         else:
-            errors.append("裏蓋画像なし")
+            errors.append(BACK_COVER_MISSING_MSG)
 
         if product.has_comments:
             futures[executor.submit(analyze_comment, product.comment_images)] = "comment"
@@ -514,7 +514,9 @@ def main():
 
             if not front_data and product.front_image:
                 errors.append("正面AI解析: 結果なし")
-            if not back_data and product.back_cover_image:
+            if not product.back_cover_image:
+                errors.append(BACK_COVER_MISSING_MSG)
+            elif not back_data:
                 errors.append("裏蓋AI解析: 結果なし")
 
             # --- 条件付きフォローアップ（single と共通のヘルパー） ---

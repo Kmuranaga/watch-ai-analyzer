@@ -15,8 +15,8 @@
   5枚目: 側面3
   6枚目: 側面4
   7枚目: 裏蓋斜め
-  8枚目: 裏蓋 ★AI解析
-  9枚目: 裏蓋正面
+  8枚目: 裏蓋正面
+  9枚目: 裏蓋 ★AI解析
   10〜14枚目: コメントシール ★AI解析（存在時のみ・最大5枚。＃コメント/状態異常/針数）
 """
 
@@ -25,13 +25,16 @@ import re
 from pathlib import Path
 from dataclasses import dataclass, field
 
-from config import SUPPORTED_IMAGE_FORMATS, IDX_COMMENT_START, COMMENT_IMAGE_COUNT
+from config import SUPPORTED_IMAGE_FORMATS, IDX_BACK_COVER, IDX_COMMENT_START, COMMENT_IMAGE_COUNT
 
 logger = logging.getLogger(__name__)
 
 # 画像枚数の期待値（バーコードなし）
 IMAGES_MIN = 9   # 商品画像9枚（異常報告なし）
 IMAGES_MAX = IDX_COMMENT_START + COMMENT_IMAGE_COUNT  # 商品画像9枚 + コメントシール最大N枚
+
+# 裏蓋画像（9枚目）が無い商品の処理ステータス表記（single/batch/Web UI 共通）
+BACK_COVER_MISSING_MSG = f"裏蓋エラー（{IDX_BACK_COVER + 1}枚目なし）"
 
 
 @dataclass
@@ -54,8 +57,8 @@ class ProductImages:
 
     @property
     def back_cover_image(self) -> Path | None:
-        """8枚目: 裏蓋画像"""
-        return self.images[7] if len(self.images) > 7 else None
+        """9枚目: 裏蓋画像"""
+        return self.images[IDX_BACK_COVER] if len(self.images) > IDX_BACK_COVER else None
 
     @property
     def comment_images(self) -> list[Path]:

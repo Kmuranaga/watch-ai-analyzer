@@ -42,7 +42,7 @@ class TestBrandBlankStatusPipeline:
     """
 
     def _make_product(self, tmp_path):
-        imgs = [tmp_path / f"{i:02d}.jpg" for i in range(8)]
+        imgs = [tmp_path / f"{i:02d}.jpg" for i in range(9)]
         for p in imgs:
             p.write_bytes(b"x")
         return ProductImages(

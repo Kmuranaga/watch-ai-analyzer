@@ -16,8 +16,8 @@ from modules.folder_scanner import ProductImages
 
 
 def test_batch_mode_populates_body_color(tmp_path, monkeypatch):
-    # --- ダミー商品（裏蓋判定のため画像8枚以上） ---
-    imgs = [tmp_path / f"{i:02d}.jpg" for i in range(8)]
+    # --- ダミー商品（裏蓋判定のため画像9枚以上） ---
+    imgs = [tmp_path / f"{i:02d}.jpg" for i in range(9)]
     for p in imgs:
         p.write_bytes(b"x")
     product = ProductImages(

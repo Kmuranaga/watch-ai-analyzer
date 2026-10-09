@@ -29,7 +29,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 import config
 from config import APP_VERSION, DEFAULT_INPUT_DIR, MAX_CONCURRENT_PRODUCTS, CSV_ENCODING
-from modules.folder_scanner import scan_folder
+from modules.folder_scanner import scan_folder, BACK_COVER_MISSING_MSG
 from modules.ai_analyzer import analyze_front, analyze_back_cover, analyze_comment, register_rate_limit_callback
 from modules.normalizer import normalize_all, set_known_brands
 from modules.hand_count_policy import decide_hand_count, title_hand_count_for
@@ -176,7 +176,7 @@ def process_product_with_progress(
         if product.back_cover_image:
             futures[executor.submit(analyze_back_cover, product.back_cover_image)] = "back"
         else:
-            errors.append("裏蓋画像なし")
+            errors.append(BACK_COVER_MISSING_MSG)
 
         if product.has_comments:
             futures[executor.submit(analyze_comment, product.comment_images)] = "comment"

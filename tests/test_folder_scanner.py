@@ -63,10 +63,10 @@ class TestProductImages:
 
     def test_back_cover_image(self):
         p = self._make_product(9)
-        assert p.back_cover_image == Path("/tmp/img_007.jpg")
+        assert p.back_cover_image == Path("/tmp/img_008.jpg")
 
     def test_back_cover_image_insufficient(self):
-        p = self._make_product(7)
+        p = self._make_product(8)
         assert p.back_cover_image is None
 
     def test_comment_images_none(self):
