@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from modules.ai_analyzer import analyze_back_cover, recover_model_number_upscaled
 from modules.normalizer import normalize_model_number
+from config import IDX_BACK_COVER
 
 IMG = {".jpg", ".jpeg", ".png"}
 ROOT = Path("input")
@@ -26,8 +27,8 @@ def back_image(pid: str):
     for d in ROOT.rglob(f"{pid}*"):
         if d.is_dir():
             im = sorted(f for f in d.iterdir() if f.suffix.lower() in IMG)
-            if len(im) > 7:
-                return im[7]
+            if len(im) > IDX_BACK_COVER:
+                return im[IDX_BACK_COVER]
     return None
 
 

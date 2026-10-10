@@ -260,7 +260,7 @@ def test_parse_batch_results_no_comments():
 # === batchモード end-to-end（single と共通の decide_hand_count 経由） ===
 
 def _make_product(tmp_path):
-    imgs = [tmp_path / f"{i:02d}.jpg" for i in range(8)]
+    imgs = [tmp_path / f"{i:02d}.jpg" for i in range(9)]
     for p in imgs:
         p.write_bytes(b"x")
     return ProductImages(
