@@ -135,3 +135,106 @@ def test_batch_missing_9th_flags_status(tmp_path, monkeypatch):
     assert row["型番"] == ""
     assert BACK_COVER_MISSING_MSG in row["処理ステータス"]
     assert "裏蓋AI解析: 結果なし" not in row["処理ステータス"]
+
+
+# === ファイル名の連番による配置（撮影漏れで 09 が欠けたケース） ===
+
+from modules.folder_scanner import scan_folder, build_numbered_slots
+
+
+def _make_folder(tmp_path, names, folder="3099530_時計"):
+    d = tmp_path / "input" / folder
+    d.mkdir(parents=True)
+    for n in names:
+        (d / n).write_bytes(b"x")
+    return tmp_path / "input"
+
+
+def _numbered(mn, nums, suffix=""):
+    return [f"{mn}_{n:02d}{suffix}.jpg" for n in nums]
+
+
+def test_missing_09_with_comments_detected(tmp_path):
+    """実データ 3099530: 01〜08, 10〜12（09 欠番）→ 裏蓋なし・コメントは10枚目以降のまま"""
+    root = _make_folder(tmp_path, _numbered("3099530", [*range(1, 9), 10, 11, 12]))
+    [p] = scan_folder(root)
+    assert p.back_cover_image is None
+    assert [c.name for c in p.comment_images] == [
+        "3099530_10.jpg", "3099530_11.jpg", "3099530_12.jpg",
+    ]
+    assert p.has_comments
+    assert p.front_image.name == "3099530_01.jpg"
+
+
+def test_numbered_with_trailing_hyphen(tmp_path):
+    """実データ 3093691: 8枚目が「_08-.jpg」でも番号どおりに配置"""
+    names = _numbered("3093691", range(1, 12))
+    names[7] = "3093691_08-.jpg"
+    root = _make_folder(tmp_path, names, folder="3093691_時計")
+    [p] = scan_folder(root)
+    assert p.image_at(7).name == "3093691_08-.jpg"
+    assert p.back_cover_image.name == "3093691_09.jpg"
+    assert [c.name for c in p.comment_images] == ["3093691_10.jpg", "3093691_11.jpg"]
+
+
+def test_complete_numbered_same_as_order(tmp_path):
+    root = _make_folder(tmp_path, _numbered("3099407", range(1, 13)))
+    [p] = scan_folder(root)
+    assert p.back_cover_image.name == "3099407_09.jpg"
+    assert len(p.comment_images) == 3
+
+
+def test_three_digit_names_numbered(tmp_path):
+    root = _make_folder(tmp_path, [f"{n:03d}.jpg" for n in [*range(1, 9), 10]])
+    [p] = scan_folder(root)
+    assert p.back_cover_image is None
+    assert [c.name for c in p.comment_images] == ["010.jpg"]
+
+
+def test_unnumbered_falls_back_to_order(tmp_path):
+    """カメラ連番（4桁）等は従来どおり並び順で判定"""
+    root = _make_folder(tmp_path, [f"DSC_{n:04d}.jpg" for n in range(101, 111)])
+    [p] = scan_folder(root)
+    assert p.slots is None
+    assert p.back_cover_image.name == "DSC_0109.jpg"
+    assert [c.name for c in p.comment_images] == ["DSC_0110.jpg"]
+
+
+def test_build_slots_rejects_duplicates_and_out_of_range():
+    assert build_numbered_slots([Path("a_01.jpg"), Path("b_01.jpg")]) is None
+    assert build_numbered_slots([Path("a_01.jpg"), Path("a_15.jpg")]) is None
+    assert build_numbered_slots([Path("a_00.jpg")]) is None
+    assert build_numbered_slots([Path("front.jpg")]) is None
+
+
+def test_single_missing_09_with_comments_end_to_end(tmp_path, monkeypatch):
+    """09 欠番＋コメントあり: 裏蓋エラーを出し、コメント（針数含む）は出力される"""
+    root = _make_folder(tmp_path, _numbered("3099530", [*range(1, 9), 10, 11, 12]))
+    seen = {}
+
+    def fake_back(img):
+        seen["back"] = img
+        return dict(BACK)
+
+    def fake_comment(imgs):
+        seen["comment"] = [i.name for i in imgs]
+        return dict(COMMENT)
+    monkeypatch.setattr(main_module, "recover_model_number_upscaled", lambda _img: "")
+    monkeypatch.setattr(main_module, "classify_series_is_slogan", lambda _s: False)
+    monkeypatch.setattr(main_module, "analyze_front", lambda _f, _d: dict(FRONT))
+    monkeypatch.setattr(main_module, "analyze_back_cover", fake_back)
+    monkeypatch.setattr(main_module, "analyze_comment", fake_comment)
+
+    out_csv = tmp_path / "out.csv"
+    monkeypatch.setattr(sys, "argv", [
+        "main.py", "--mode", "single", "--input", str(root), "--output", str(out_csv),
+    ])
+    main_module.main()
+    with open(out_csv, encoding="utf-8-sig") as f:
+        [row] = list(csv.DictReader(f))
+
+    assert "back" not in seen  # コメントシールを裏蓋として解析しない
+    assert seen["comment"] == ["3099530_10.jpg", "3099530_11.jpg", "3099530_12.jpg"]
+    assert row["異常内容"] == "ベルト切れ"
+    assert row["針数"] == "3針"
+    assert BACK_COVER_MISSING_MSG in row["処理ステータス"]
